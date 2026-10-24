@@ -42,7 +42,7 @@ class Tile():
             changeY = -1
         while colliding:
             if changeY == -1:
-                object.onGround = True
+                object.jumps[1] = object.jumps[0]
             object.changePos(0, changeY)
             object.yVel = 0
             colliding = self.rect.colliderect(object.rect)
@@ -97,14 +97,16 @@ class Player():
         self.rect = pygame.Rect(0, 0, 40, 40)
         self.cameraPos = (0, 0)
         self.camera = pygame.Surface((WIDTH, HEIGHT))
-        self.controls = controls
+        self.controls = []
+        for button in controls:
+            self.controls.append([button, False])
         self.xVel = 0
         self.yVel = 0
         self.grav = 1
         self.speed = 5
         self.facing = 1 #0 = left 1 = right
         playerList.append(self)
-        self.onGround = False
+        self.jumps = [2, 2]
 
     def setPos(self, x, y):
         self.rect = (x, y, 40, 40)
@@ -136,9 +138,15 @@ class Player():
 
         self.yVel += self.grav/2
 
-        if pressedKeys[0] and self.onGround:
-            self.yVel = -self.grav*10
-        self.onGround = False
+        if pressedKeys[0]:
+            if self.controls[0][1] == False:
+                self.controls[0][1] = True
+                print(self.jumps)
+                if self.jumps[1] != 0:
+                    self.yVel = -self.grav*10
+                    self.jumps[1] -= 1
+        else:
+            self.controls[0][1] = False
 
         self.changePos(0, self.yVel)
 
@@ -179,7 +187,7 @@ def checkKeypress(keyList):
     keys = pygame.key.get_pressed()
     requestedKeys = []
     for key in keyList:
-        requestedKeys.append(keys[key])
+        requestedKeys.append(keys[key[0]])
     return requestedKeys
 
 def update():
