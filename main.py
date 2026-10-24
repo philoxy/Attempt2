@@ -40,8 +40,9 @@ class Tile():
             changeY = 1
         elif object.yVel > 0:
             changeY = -1
-            object.onGround = True
         while colliding:
+            if changeY == -1:
+                object.onGround = True
             object.changePos(0, changeY)
             object.yVel = 0
             colliding = self.rect.colliderect(object.rect)
