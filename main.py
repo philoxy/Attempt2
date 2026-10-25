@@ -43,7 +43,7 @@ class Tile():
         while colliding:
             if changeY == -1:
                 object.jumps[1] = object.jumps[0]
-                object.coyoteTime = 4
+                object.coyoteTime = 8
             object.changePos(0, changeY)
             object.yVel = 0
             colliding = self.rect.colliderect(object.rect)
@@ -65,6 +65,12 @@ class Map():
         tree = ET.parse(f'{folder}/map.tmx')
         root = tree.getroot()
         mapstr = root[1][0].text
+        objects = root[2]
+        for object in objects:
+            if object.attrib['name'] == 'spawn':
+                self.spawnPos = (int(object.attrib['x']), int(object.attrib['y']))
+                break
+
         tempMap = mapstr.split("\n")
         for row in tempMap:
             self.map.append(row.split(","))
@@ -115,12 +121,13 @@ class Player():
         playerList.append(self)
 
     def reset(self):
+        global currentMap
         self.jumps = [2, 0]
         self.deathCounter = 0
         self.offsetX = 0
         self.offsetY = 0
         self.cameraPos = (0, 0)
-        self.rect = pygame.Rect(0, 0, 40, 40)
+        self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1], 40, 40)
         self.xVel = 0
         self.yVel = 0
         self.grav = 1
@@ -144,7 +151,7 @@ class Player():
         if len(playerList) == 1:
             currentMap.mus.stop()
         if self.deathCounter == 0:
-            self.deathCounter = 100
+            self.deathCounter = 60
         self.deathCounter -= 1
         if self.deathCounter == 0:
             currentMap.mus.play()
@@ -192,7 +199,7 @@ class Player():
                         self.yVel = -self.grav*10
                     else:
                         if (self.jumps[1] == self.jumps[0]) and self.yVel > 0.5:
-                            self.jumps[1] -= 0
+                            self.jumps[1] = 0
                             self.yVel = -self.grav*10
         else:
             self.controls[0][1] = False
