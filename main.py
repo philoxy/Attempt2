@@ -95,6 +95,8 @@ class Player():
     def __init__(self, controls):
         global playerList
         self.rect = pygame.Rect(0, 0, 40, 40)
+        self.offsetX = 0
+        self.offsetY = 0
         self.cameraPos = (0, 0)
         self.camera = pygame.Surface((WIDTH, HEIGHT))
         self.controls = []
@@ -115,7 +117,8 @@ class Player():
         self.rect = (self.rect[0] + x, self.rect[1] + y, 40, 40)
 
     def debug_drawRect(self):
-        pygame.draw.rect(self.camera, (255, 0, 0), self.rect)
+        tempRect = (self.rect[0]-self.offsetX, self.rect[1]-self.offsetY, 40, 40)
+        pygame.draw.rect(self.camera, (255, 0, 0), tempRect)
 
     def move(self):
         pressedKeys = checkKeypress(self.controls)
@@ -129,7 +132,7 @@ class Player():
         self.xVel *= 0.9
         self.changePos(self.xVel, 0)
 
-        if -0.05 < self.xVel < 0.05:
+        if abs(self.xVel) < 0.05:
             self.xVel = 0
 
         nearbyTiles = self.getNearbyTiles()
@@ -141,18 +144,26 @@ class Player():
         if pressedKeys[0]:
             if self.controls[0][1] == False:
                 self.controls[0][1] = True
-                print(self.jumps)
                 if self.jumps[1] != 0:
                     self.yVel = -self.grav*10
                     self.jumps[1] -= 1
         else:
             self.controls[0][1] = False
-
         self.changePos(0, self.yVel)
 
         nearbyTiles = self.getNearbyTiles()
         for tile in nearbyTiles:
             tile.yCollide(self)
+
+    def cameraMove(self):
+        leftCameraBorder = self.rect[0]+40 > WIDTH*(0.6)-self.cameraPos[0] and self.xVel > 0.75
+        rightCameraBorder = self.rect[0] < WIDTH*(0.4)-self.cameraPos[0] and self.xVel < -0.75
+        if leftCameraBorder or rightCameraBorder:
+            self.cameraPos = (self.cameraPos[0]-self.xVel, self.cameraPos[1])
+            if abs(self.xVel) < 0.05:
+                self.xVel = 0
+            self.offsetX += self.xVel
+            print(self.offsetX)
 
     def getNearbyTiles(self):
         global currentMap
@@ -174,6 +185,7 @@ class Player():
         playerList.remove(self)
 
     def update(self):
+        self.cameraMove()
         self.move()
         self.camera.fill((200, 0, 255))
         currentMap.update()
