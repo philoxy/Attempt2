@@ -49,6 +49,7 @@ class Tile():
 
 class Map():
     def __init__(self, folder):
+        self.path = folder
         self.spritesheet = loadimg(f'{folder}/tileset.png')
         self.bg = loadimg(f'{folder}/bg.png')
         self.mus = pygame.mixer.Sound(f'{folder}/mus.mp3')
@@ -105,21 +106,26 @@ playerList = []
 class Player():
     def __init__(self, controls):
         global playerList
-        self.rect = pygame.Rect(0, 0, 40, 40)
-        self.offsetX = 0
-        self.offsetY = 0
-        self.cameraPos = (0, 0)
+        self.reset()
         self.camera = pygame.Surface((WIDTH, HEIGHT))
         self.controls = []
         for button in controls:
             self.controls.append([button, False])
+        playerList.append(self)
+
+    def reset(self):
+        self.jumps = [2, 0]
+        self.deathCounter = 0
+        self.offsetX = 0
+        self.offsetY = 0
+        self.cameraPos = (0, 0)
+        self.rect = pygame.Rect(0, 0, 40, 40)
         self.xVel = 0
         self.yVel = 0
         self.grav = 1
         self.speed = 5
-        self.facing = 1 #0 = left 1 = right
-        playerList.append(self)
-        self.jumps = [2, 2]
+        self.grav = 1
+        self.speed = 5
 
     def setPos(self, x, y):
         self.rect = (x, y, 40, 40)
@@ -131,7 +137,22 @@ class Player():
         tempRect = (int(self.rect[0]-self.offsetX), int(self.rect[1]-self.offsetY), 40, 40)
         pygame.draw.rect(self.camera, (255, 0, 0), tempRect)
 
+    def die(self):
+        global playerList
+        if len(playerList) == 1:
+            currentMap.mus.stop()
+        if self.deathCounter == 0:
+            self.deathCounter = 100
+        self.deathCounter -= 1
+        if self.deathCounter == 0:
+            currentMap.mus.play()
+            tempControls = []
+            for button in self.controls:
+                tempControls.append(button[0])
+            self.reset()
+
     def move(self):
+        global currentMap
         pressedKeys = checkKeypress(self.controls)
         if pressedKeys[1]:
             self.facing = 0
@@ -203,7 +224,10 @@ class Player():
 
     def update(self):
         self.cameraMove()
-        self.move()
+        if self.deathCounter == 0:
+            self.move()
+        if self.rect[1] > (len(currentMap.map)+2)*40:
+            self.die()
         self.camera.fill((255, 255, 255))
         currentMap.drawBG()
         currentMap.update()
