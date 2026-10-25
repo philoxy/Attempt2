@@ -43,6 +43,7 @@ class Tile():
         while colliding:
             if changeY == -1:
                 object.jumps[1] = object.jumps[0]
+                object.coyoteTime = 4
             object.changePos(0, changeY)
             object.yVel = 0
             colliding = self.rect.colliderect(object.rect)
@@ -126,6 +127,7 @@ class Player():
         self.speed = 5
         self.grav = 1
         self.speed = 5
+        self.coyoteTime = 0
 
     def setPos(self, x, y):
         self.rect = (x, y, 40, 40)
@@ -171,14 +173,27 @@ class Player():
         for tile in nearbyTiles:
             tile.xCollide(self)
 
+        if self.rect[0] < 0:
+            self.rect = (0, self.rect[1], self.rect[2], self.rect[3])
+            self.xVel = 0
+
+        if self.rect[0]+40 > len(currentMap.map[0])*40:
+            self.rect = (len(currentMap.map[0])*40-40, self.rect[1], self.rect[2], self.rect[3])
+            self.xVel = 0
+
         self.yVel += self.grav/2
 
         if pressedKeys[0]:
             if self.controls[0][1] == False:
                 self.controls[0][1] = True
-                if self.jumps[1] != 0:
-                    self.yVel = -self.grav*10
-                    self.jumps[1] -= 1
+                if self.jumps[1] > 0:
+                    if self.coyoteTime > 0 or self.jumps[0]-1 == self.jumps[1]:
+                        self.jumps[1] -= 1
+                        self.yVel = -self.grav*10
+                    else:
+                        if (self.jumps[1] == self.jumps[0]) and self.yVel > 0.5:
+                            self.jumps[1] -= 0
+                            self.yVel = -self.grav*10
         else:
             self.controls[0][1] = False
         self.changePos(0, self.yVel)
@@ -187,16 +202,21 @@ class Player():
         for tile in nearbyTiles:
             tile.yCollide(self)
 
+        if self.coyoteTime > 0:
+            self.coyoteTime -= 1
+
     def cameraMove(self):
         global currentMap
         leftCameraBorder = self.rect[0]+40 > WIDTH*(0.6)-self.cameraPos[0] and self.xVel > 0.75 and self.cameraPos[0] > -(len(currentMap.map[0]))*40+640
         rightCameraBorder = self.rect[0] < WIDTH*(0.4)-self.cameraPos[0] and self.xVel < -0.75 and self.cameraPos[0] < 0
+
         if self.cameraPos[0] > 0:
             self.offsetX += self.cameraPos[0]
             self.cameraPos = (0, self.cameraPos[1])
         if self.cameraPos[0] < -(len(currentMap.map[0]))*40+640:
             self.offsetX += self.cameraPos[0]-(-(len(currentMap.map[0]))*40+640)
             self.cameraPos = (-(len(currentMap.map[0]))*40+640, self.cameraPos[1])
+
         if leftCameraBorder or rightCameraBorder:
             self.cameraPos = (self.cameraPos[0]-self.xVel, self.cameraPos[1])
             if abs(self.xVel) < 0.75:
