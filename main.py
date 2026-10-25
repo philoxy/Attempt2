@@ -6,10 +6,12 @@ pygame.font.init()
 WIDTH = 640
 HEIGHT = 480
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED|pygame.RESIZABLE, vsync=1)
-#icon = pygame.image.load("assets/icon.png").convert_alpha()
+icon = pygame.image.load("assets/global/icon.png").convert_alpha()
 pygame.display.set_caption("Attempt 2")
-#pygame.display.set_icon(icon)
+pygame.display.set_icon(icon)
 clock = pygame.time.Clock()
+
+TILESIZE = 40
 
 #todo
 #camera movement
@@ -20,7 +22,7 @@ def loadimg(img):
 
 class Tile():
     def __init__(self, x, y):
-        self.rect = pygame.Rect(x*40, y*40, 40, 40)
+        self.rect = pygame.Rect(x*TILESIZE, y*TILESIZE, TILESIZE, TILESIZE)
     
     def xCollide(self, object):
         colliding = self.rect.colliderect(object.rect)
@@ -80,7 +82,7 @@ class Map():
             self.map[row].pop()
 
     def draw(self):
-        self.mapsurf = pygame.Surface(( 40*len(self.map[0]), 40*len(self.map) ), pygame.SRCALPHA) #tilesize is 40 and im not changing that
+        self.mapsurf = pygame.Surface(( TILESIZE*len(self.map[0]), TILESIZE*len(self.map) ), pygame.SRCALPHA) #tilesize is 40 and im not changing that
         self.mapsurf.convert_alpha()
         x, y = -1, -1
         for row in self.map:
@@ -90,7 +92,7 @@ class Map():
                 tile = int(tile)
                 x += 1
                 if tile != 0:
-                    self.mapsurf.blit(self.spritesheet, dest=(x*40, y*40), area=(((tile-1)%5)*40, math.floor((tile-1)/5)*40, 40, 40))
+                    self.mapsurf.blit(self.spritesheet, dest=(x*TILESIZE, y*TILESIZE), area=(((tile-1)%5)*TILESIZE, math.floor((tile-1)/5)*TILESIZE, TILESIZE, TILESIZE))
                     self.tiles[y][x] = Tile(x, y)
                 else:
                     self.tiles[y][x] = None
@@ -98,8 +100,8 @@ class Map():
     def drawBG(self):
         global playerList
         for player in playerList:
-            player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640-640, player.cameraPos[1]))
-            player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640, player.cameraPos[1]))
+            player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640-640, 0))
+            player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640, 0))
                     
     def update(self):
         global playerList
@@ -122,12 +124,13 @@ class Player():
 
     def reset(self):
         global currentMap
+        self.size = 30
         self.jumps = [2, 0]
         self.deathCounter = 0
         self.offsetX = 0
         self.offsetY = 0
-        self.cameraPos = (0, 0)
-        self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1], 40, 40)
+        self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1], self.size, self.size)
+        self.cameraPos = (-currentMap.spawnPos[0]+(WIDTH/2-20), -currentMap.spawnPos[1]+(HEIGHT/2-20))
         self.xVel = 0
         self.yVel = 0
         self.grav = 1
@@ -137,13 +140,13 @@ class Player():
         self.coyoteTime = 0
 
     def setPos(self, x, y):
-        self.rect = (x, y, 40, 40)
+        self.rect = (x, y, self.size, self.size)
 
     def changePos(self, x, y):
-        self.rect = (self.rect[0] + x, self.rect[1] + y, 40, 40)
+        self.rect = (self.rect[0] + x, self.rect[1] + y, self.size, self.size)
 
     def debug_drawRect(self):
-        tempRect = (int(self.rect[0]-self.offsetX), int(self.rect[1]-self.offsetY), 40, 40)
+        tempRect = (int(self.rect[0]-int(self.offsetX)-currentMap.spawnPos[0]+(WIDTH/2-20)), int(self.rect[1]-int(self.offsetY)-currentMap.spawnPos[1]+(HEIGHT/2-20)), self.size, self.size)
         pygame.draw.rect(self.camera, (255, 0, 0), tempRect)
 
     def die(self):
@@ -184,8 +187,8 @@ class Player():
             self.rect = (0, self.rect[1], self.rect[2], self.rect[3])
             self.xVel = 0
 
-        if self.rect[0]+40 > len(currentMap.map[0])*40:
-            self.rect = (len(currentMap.map[0])*40-40, self.rect[1], self.rect[2], self.rect[3])
+        if self.rect[0]+self.size > len(currentMap.map[0])*TILESIZE:
+            self.rect = ((len(currentMap.map[0]))*TILESIZE-self.size, self.rect[1], self.rect[2], self.rect[3])
             self.xVel = 0
 
         self.yVel += self.grav/2
@@ -214,26 +217,37 @@ class Player():
 
     def cameraMove(self):
         global currentMap
-        leftCameraBorder = self.rect[0]+40 > WIDTH*(0.6)-self.cameraPos[0] and self.xVel > 0.75 and self.cameraPos[0] > -(len(currentMap.map[0]))*40+640
-        rightCameraBorder = self.rect[0] < WIDTH*(0.4)-self.cameraPos[0] and self.xVel < -0.75 and self.cameraPos[0] < 0
+        rightCameraBorder = self.rect[0]+self.size > WIDTH*0.6-self.cameraPos[0] and self.xVel > 0.75 and self.cameraPos[0] > -(len(currentMap.map[0]))*TILESIZE+WIDTH
+        leftCameraBorder = self.rect[0] < WIDTH*0.4-self.cameraPos[0] and self.xVel < -0.75 and self.cameraPos[0] < 0
+        topCameraBorder = self.rect[1] < HEIGHT*0.4-self.cameraPos[1] and self.yVel < -0.75 and self.cameraPos[1] < 0
+        bottomCameraBorder = self.rect[1]+self.size > HEIGHT*0.6-self.cameraPos[1] and self.yVel > 0.75 and self.cameraPos[1] > -(len(currentMap.map))*TILESIZE+HEIGHT
 
         if self.cameraPos[0] > 0:
             self.offsetX += self.cameraPos[0]
             self.cameraPos = (0, self.cameraPos[1])
-        if self.cameraPos[0] < -(len(currentMap.map[0]))*40+640:
-            self.offsetX += self.cameraPos[0]-(-(len(currentMap.map[0]))*40+640)
-            self.cameraPos = (-(len(currentMap.map[0]))*40+640, self.cameraPos[1])
+        if self.cameraPos[0] < -(len(currentMap.map[0]))*TILESIZE+WIDTH:
+            self.offsetX += self.cameraPos[0]-(-(len(currentMap.map[0]))*TILESIZE+WIDTH)
+            self.cameraPos = (-(len(currentMap.map[0]))*TILESIZE+WIDTH, self.cameraPos[1])
+
+        if self.cameraPos[1] > 0:
+            self.offsetY += self.cameraPos[1]
+            self.cameraPos = (self.cameraPos[0], 0)
+        if self.cameraPos[1] < -(len(currentMap.map))*TILESIZE+HEIGHT:
+            self.offsetY += self.cameraPos[1]-(-(len(currentMap.map))*TILESIZE+HEIGHT)
+            self.cameraPos = (self.cameraPos[0], -(len(currentMap.map))*TILESIZE+HEIGHT)
 
         if leftCameraBorder or rightCameraBorder:
             self.cameraPos = (self.cameraPos[0]-self.xVel, self.cameraPos[1])
-            if abs(self.xVel) < 0.75:
-                self.xVel = 0
             self.offsetX += self.xVel
+
+        if topCameraBorder or bottomCameraBorder:
+            self.cameraPos = (self.cameraPos[0], self.cameraPos[1]-self.yVel)
+            self.offsetY += self.yVel
 
     def getNearbyTiles(self):
         global currentMap
         nearbyTiles = []
-        xMin, xMax, yMin, yMax =  math.floor((self.rect[0])/40-1), math.ceil((self.rect[0])/40+2), math.floor((self.rect[1])/40-1), math.ceil((self.rect[1])/40+2)
+        xMin, xMax, yMin, yMax =  math.floor(self.rect[0]/TILESIZE-1), math.ceil(self.rect[0]/TILESIZE+2), math.floor(self.rect[1]/TILESIZE-1), math.ceil(self.rect[1]/TILESIZE+2)
 
         for row in range(yMin, yMax):
             for tile in range(xMin, xMax):
@@ -253,7 +267,7 @@ class Player():
         self.cameraMove()
         if self.deathCounter == 0:
             self.move()
-        if self.rect[1] > (len(currentMap.map)+2)*40:
+        if self.rect[1] > (len(currentMap.map)+2)*TILESIZE:
             self.die()
         self.camera.fill((255, 255, 255))
         currentMap.drawBG()
