@@ -51,10 +51,13 @@ class Map():
     def __init__(self, folder):
         self.spritesheet = loadimg(f'{folder}/tileset.png')
         self.bg = loadimg(f'{folder}/bg.png')
+        self.mus = pygame.mixer.Sound(f'{folder}/mus.mp3')
         self.map = []
         self.parsetmx(folder)
         self.tiles = self.map
         self.draw()
+
+        self.mus.play(loops=-1)
 
     def parsetmx(self, folder): #i put it in a function because its ugly
         tree = ET.parse(f'{folder}/map.tmx')
@@ -168,8 +171,10 @@ class Player():
         leftCameraBorder = self.rect[0]+40 > WIDTH*(0.6)-self.cameraPos[0] and self.xVel > 0.75 and self.cameraPos[0] > -(len(currentMap.map[0]))*40+640
         rightCameraBorder = self.rect[0] < WIDTH*(0.4)-self.cameraPos[0] and self.xVel < -0.75 and self.cameraPos[0] < 0
         if self.cameraPos[0] > 0:
+            self.offsetX += self.cameraPos[0]
             self.cameraPos = (0, self.cameraPos[1])
         if self.cameraPos[0] < -(len(currentMap.map[0]))*40+640:
+            self.offsetX += self.cameraPos[0]-(-(len(currentMap.map[0]))*40+640)
             self.cameraPos = (-(len(currentMap.map[0]))*40+640, self.cameraPos[1])
         if leftCameraBorder or rightCameraBorder:
             self.cameraPos = (self.cameraPos[0]-self.xVel, self.cameraPos[1])
