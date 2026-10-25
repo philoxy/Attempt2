@@ -25,9 +25,9 @@ class Tile():
     def xCollide(self, object):
         colliding = self.rect.colliderect(object.rect)
         if object.xVel < 0:
-            changeX = 1
+            changeX = 0.5
         elif object.xVel > 0:
-            changeX = -1
+            changeX = -0.5
 
         while colliding:
             object.changePos(changeX, 0)
@@ -49,14 +49,15 @@ class Tile():
 
 class Map():
     def __init__(self, folder):
-        self.spritesheet = loadimg(f'assets/{folder}/tileset.png')
+        self.spritesheet = loadimg(f'{folder}/tileset.png')
+        self.bg = loadimg(f'{folder}/bg.png')
         self.map = []
         self.parsetmx(folder)
         self.tiles = self.map
         self.draw()
 
     def parsetmx(self, folder): #i put it in a function because its ugly
-        tree = ET.parse(f'assets/{folder}/map.tmx')
+        tree = ET.parse(f'{folder}/map.tmx')
         root = tree.getroot()
         mapstr = root[1][0].text
         tempMap = mapstr.split("\n")
@@ -68,7 +69,8 @@ class Map():
             self.map[row].pop()
 
     def draw(self):
-        self.mapsurf = pygame.Surface(( 40*len(self.map[0]), 40*len(self.map) )) #tilesize is 40 and im not changing that
+        self.mapsurf = pygame.Surface(( 40*len(self.map[0]), 40*len(self.map) ), pygame.SRCALPHA) #tilesize is 40 and im not changing that
+        self.mapsurf.convert_alpha()
         x, y = -1, -1
         for row in self.map:
             y += 1
@@ -77,17 +79,23 @@ class Map():
                 tile = int(tile)
                 x += 1
                 if tile != 0:
-                    self.mapsurf.blit(self.spritesheet.convert_alpha(), dest=(x*40, y*40), area=(((tile-1)%5)*40, math.floor((tile-1)/5)*40, 40, 40))
+                    self.mapsurf.blit(self.spritesheet, dest=(x*40, y*40), area=(((tile-1)%5)*40, math.floor((tile-1)/5)*40, 40, 40))
                     self.tiles[y][x] = Tile(x, y)
                 else:
                     self.tiles[y][x] = None
+
+    def drawBG(self):
+        global playerList
+        for player in playerList:
+            player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640-640, player.cameraPos[1]))
+            player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640, player.cameraPos[1]))
                     
     def update(self):
         global playerList
         for player in playerList:
             player.camera.blit(self.mapsurf, dest=player.cameraPos)
 
-currentMap = Map('lv1')
+currentMap = Map('assets/lv1')
 
 playerList = []
 
@@ -117,7 +125,7 @@ class Player():
         self.rect = (self.rect[0] + x, self.rect[1] + y, 40, 40)
 
     def debug_drawRect(self):
-        tempRect = (self.rect[0]-self.offsetX, self.rect[1]-self.offsetY, 40, 40)
+        tempRect = (int(self.rect[0]-self.offsetX), int(self.rect[1]-self.offsetY), 40, 40)
         pygame.draw.rect(self.camera, (255, 0, 0), tempRect)
 
     def move(self):
@@ -130,10 +138,10 @@ class Player():
             self.xVel += self.speed/6
 
         self.xVel *= 0.9
-        self.changePos(self.xVel, 0)
 
         if abs(self.xVel) < 0.05:
             self.xVel = 0
+        self.changePos(self.xVel, 0)
 
         nearbyTiles = self.getNearbyTiles()
         for tile in nearbyTiles:
@@ -160,10 +168,9 @@ class Player():
         rightCameraBorder = self.rect[0] < WIDTH*(0.4)-self.cameraPos[0] and self.xVel < -0.75
         if leftCameraBorder or rightCameraBorder:
             self.cameraPos = (self.cameraPos[0]-self.xVel, self.cameraPos[1])
-            if abs(self.xVel) < 0.05:
+            if abs(self.xVel) < 0.75:
                 self.xVel = 0
             self.offsetX += self.xVel
-            print(self.offsetX)
 
     def getNearbyTiles(self):
         global currentMap
@@ -187,7 +194,8 @@ class Player():
     def update(self):
         self.cameraMove()
         self.move()
-        self.camera.fill((200, 0, 255))
+        self.camera.fill((255, 255, 255))
+        currentMap.drawBG()
         currentMap.update()
         self.debug_drawRect()
 
