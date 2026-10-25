@@ -164,8 +164,13 @@ class Player():
             tile.yCollide(self)
 
     def cameraMove(self):
-        leftCameraBorder = self.rect[0]+40 > WIDTH*(0.6)-self.cameraPos[0] and self.xVel > 0.75
-        rightCameraBorder = self.rect[0] < WIDTH*(0.4)-self.cameraPos[0] and self.xVel < -0.75
+        global currentMap
+        leftCameraBorder = self.rect[0]+40 > WIDTH*(0.6)-self.cameraPos[0] and self.xVel > 0.75 and self.cameraPos[0] > -(len(currentMap.map[0]))*40+640
+        rightCameraBorder = self.rect[0] < WIDTH*(0.4)-self.cameraPos[0] and self.xVel < -0.75 and self.cameraPos[0] < 0
+        if self.cameraPos[0] > 0:
+            self.cameraPos = (0, self.cameraPos[1])
+        if self.cameraPos[0] < -(len(currentMap.map[0]))*40+640:
+            self.cameraPos = (-(len(currentMap.map[0]))*40+640, self.cameraPos[1])
         if leftCameraBorder or rightCameraBorder:
             self.cameraPos = (self.cameraPos[0]-self.xVel, self.cameraPos[1])
             if abs(self.xVel) < 0.75:
