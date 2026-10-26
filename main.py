@@ -1,6 +1,6 @@
 import os
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
-import pygame, xml.etree.ElementTree as ET, math
+import pygame, xml.etree.ElementTree as ET, math, sys
 pygame.mixer.init()
 pygame.font.init()
 WIDTH = 640
@@ -13,29 +13,34 @@ clock = pygame.time.Clock()
 
 TILESIZE = 40
 
-#todo
-#camera movement
-#collision (doom)
-
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
 
+img_obj = loadimg('assets/global/objects.png')
+img_flag = loadimg('assets/global/flags.png')
+
+snd_spring = pygame.mixer.Sound('assets/global/sfx/spring.mp3')
+snd_die = pygame.mixer.Sound('assets/global/sfx/death.mp3')
+
+
+#objects
 class Spring():
     def __init__(self, x, y):
-        self.rect = pygame.Rect(int(x), int(y), TILESIZE, TILESIZE)
-        self.default = (0, 0, TILESIZE, TILESIZE)
-        self.activated = (TILESIZE, 0, TILESIZE, TILESIZE)
-        self.sprite = self.default
+        self.pos = (int(x), int(y))
+        self.spritesheet = img_obj
+        self.image_unboing = (0, 0, TILESIZE, TILESIZE)
+        self.image_boing = (TILESIZE, 0, TILESIZE, TILESIZE)
+        self.sprite = self.image_unboing
         self.activateTimer = 0
-        self.image = loadimg('assets/global/objects.png')
-        self.imageRect = self.image.get_rect()
-        self.imageRect = pygame.Rect(self.rect[0], self.rect[1]+(TILESIZE-self.default[3]), TILESIZE, TILESIZE)
+        self.imageRect = pygame.Rect(self.pos[0], self.pos[1]+(TILESIZE-25), TILESIZE, 25) #25 is the height of the spring image
 
     def collide(self, object):
         if self.imageRect.colliderect(object.rect):
-            object.yVel = -20
+            object.yVel = -15
             object.jumps[1] = 1
             self.activateTimer = 30
+            snd_spring.stop()
+            snd_spring.play()
 
 
     def update(self):
@@ -43,15 +48,36 @@ class Spring():
 
         if self.activateTimer > 0:
             self.activateTimer -= 1
-            self.sprite = self.activated
+            self.sprite = self.image_boing
         else:
-            self.sprite = self.default
+            self.sprite = self.image_unboing
 
         for player in playerList:
-            player.camera.blit(self.image, dest=(player.cameraPos[0]+self.rect[0], player.cameraPos[1]+self.rect[1]), area=self.sprite)
+            player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=self.sprite)
             self.collide(player)
         
+class Goal():
+    def __init__(self, x, y, type):
+        self.pos = (int(x), int(y)-TILESIZE/2)
+        self.rect = pygame.Rect(self.pos[0], self.pos[1], TILESIZE, TILESIZE*1.5)
+        if type == 'normal':
+            self.sprite = (0, 0, TILESIZE, TILESIZE*1.5)
+        elif type == 'secret':
+            self.sprite = (TILESIZE, 0, TILESIZE, TILESIZE*1.5)
+        self.spritesheet = img_flag
+        self.anim = 1
+        self.frame = math.floor(self.anim/10)
 
+    def collide(self, player):
+        if self.rect.colliderect(player.rect):
+            player.win()
+
+    def update(self):
+        for player in playerList:
+            player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=(self.sprite[0], self.frame*(TILESIZE*1.5), self.sprite[2], self.sprite[3]))
+            self.collide(player)
+
+#not objects
 class Tile():
     def __init__(self, x, y):
         self.rect = pygame.Rect(x*TILESIZE, y*TILESIZE, TILESIZE, TILESIZE)
@@ -100,9 +126,17 @@ class Map():
     def loadObjects(self):
         tempObjects = self.objects
         self.objects = []
+        exit, secretexit = False, False
         for object in tempObjects:
-            if object.attrib['name'] == 'spring':
-                self.objects.append(Spring(object.attrib['x'], object.attrib['y']))
+            x, y, name = object.attrib['x'], object.attrib['y'], object.attrib['name']
+            if name == 'spring':
+                self.objects.append(Spring(x, y))
+            elif name == 'exit' and exit == False:
+                self.objects.append(Goal(x, y, 'normal'))
+                exit == True
+            elif name == 'secretexit' and secretexit == False:
+                self.objects.append(Goal(x, y, 'secret'))
+                secretexit == True
 
     def parsetmx(self, folder): #i put it in a function because its ugly
         tree = ET.parse(f'{folder}/map.tmx')
@@ -169,7 +203,7 @@ class Player():
         global currentMap
         self.size = 30
         self.jumps = [2, 0]
-        self.deathCounter = 0
+        self.deathTimer = 0
         self.offsetX = 0
         self.offsetY = 0
         self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1], self.size, self.size)
@@ -181,6 +215,7 @@ class Player():
         self.grav = 1
         self.speed = 5
         self.coyoteTime = 0
+        self.won = False
 
     def setPos(self, x, y):
         self.rect = pygame.Rect(x, y, self.size, self.size)
@@ -198,15 +233,19 @@ class Player():
                 tempRect = (int(player.rect[0]-int(self.offsetX)-currentMap.spawnPos[0]+(WIDTH/2-20)), int(player.rect[1]-int(self.offsetY)-currentMap.spawnPos[1]+(HEIGHT/2-20)), player.size, player.size)
                 pygame.draw.rect(self.camera, (255, 0, 0), tempRect)
 
+    def win(self):
+        self.won = True
+        sys.exit()
 
     def die(self):
         global playerList
         if len(playerList) == 1:
             currentMap.mus.stop()
-        if self.deathCounter == 0:
-            self.deathCounter = 60
-        self.deathCounter -= 1
-        if self.deathCounter == 0:
+        if self.deathTimer == 0:
+            snd_die.play()
+            self.deathTimer = 60
+        self.deathTimer -= 1
+        if self.deathTimer == 0:
             if len(playerList) == 1:
                 currentMap.mus.play()
             tempControls = []
@@ -214,20 +253,12 @@ class Player():
                 tempControls.append(button[0])
             self.reset()
 
-    def playerCollide(self, player, direction):
-        if direction == 'x':
-            colliding = self.rect.colliderect(player.rect)
-            if player.xVel < 0:
-                changeX = 0.5
-            elif player.xVel > 0:
-                changeX = -0.5
-
-            while colliding:
-                player.changePos(changeX, 0)
-                player.xVel = 0
-                colliding = self.rect.colliderect(player.rect)
-        if direction == 'y':
-            pass
+    def jump(self):
+        if self.yVel < 0:
+            jumpMultiplier = (1+abs(self.yVel)/15)
+        else:
+            jumpMultiplier = 1
+        self.yVel = -self.grav*10*jumpMultiplier
 
     def move(self):
         global currentMap, playerList
@@ -248,9 +279,6 @@ class Player():
         nearbyTiles = self.getNearbyTiles()
         for tile in nearbyTiles:
             tile.collide(self, 'x')
-        #if len(playerList) > 1:
-        #    for player in playerList:
-        #        player.playerCollide(self, 'x')
 
         if self.rect[0] < 0:
             self.rect = pygame.Rect(0, self.rect[1], self.rect[2], self.rect[3])
@@ -268,11 +296,11 @@ class Player():
                 if self.jumps[1] > 0:
                     if self.coyoteTime > 0 or self.jumps[0]-1 == self.jumps[1]:
                         self.jumps[1] -= 1
-                        self.yVel = -self.grav*10
+                        self.jump()
                     else:
                         if (self.jumps[1] == self.jumps[0]) and self.yVel > 0.5:
                             self.jumps[1] = 0
-                            self.yVel = -self.grav*10
+                            self.jump()
         else:
             self.controls[0][1] = False
         self.changePos(0, self.yVel)
@@ -280,9 +308,6 @@ class Player():
         nearbyTiles = self.getNearbyTiles()
         for tile in nearbyTiles:
             tile.collide(self, 'y')
-            #if len(playerList) > 1:
-            #    for player in playerList:
-            #        player.playerCollide(self, 'y')
 
         if self.coyoteTime > 0:
             self.coyoteTime -= 1
@@ -292,8 +317,8 @@ class Player():
         rightCameraBorder = self.rect[0]+self.size > WIDTH*0.6-self.cameraPos[0] and self.xVel > 0.75 and self.cameraPos[0] > -(len(currentMap.map[0]))*TILESIZE+WIDTH
         leftCameraBorder = self.rect[0] < WIDTH*0.4-self.cameraPos[0] and self.xVel < -0.75 and self.cameraPos[0] < 0
         #if i dont add this the camera breaks
-        topCameraBorder = self.rect[1] <= HEIGHT*0.5-self.cameraPos[1] and self.yVel < -0.75 and self.cameraPos[1] < 0
-        bottomCameraBorder = self.rect[1]+self.size > HEIGHT*0.5-self.cameraPos[1] and self.yVel > 0.75 and self.cameraPos[1] > -(len(currentMap.map))*TILESIZE+HEIGHT
+        topCameraBorder = self.rect[1] < HEIGHT*0.4-self.cameraPos[1] and self.yVel < -0.75 and self.cameraPos[1] < 0
+        bottomCameraBorder = self.rect[1]+self.size > HEIGHT*0.4-self.cameraPos[1] and self.yVel > 0.75 and self.cameraPos[1] > -(len(currentMap.map))*TILESIZE+HEIGHT
 
         if leftCameraBorder or rightCameraBorder:
             self.cameraPos = (self.cameraPos[0]-self.xVel, self.cameraPos[1])
@@ -339,7 +364,7 @@ class Player():
     def update(self):
         global playerList
         self.cameraMove()
-        if self.deathCounter == 0:
+        if self.deathTimer == 0 and not self.won:
             self.move()
         if self.rect[1] > (len(currentMap.map)+2)*TILESIZE:
             self.die()
