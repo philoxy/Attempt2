@@ -65,8 +65,8 @@ class Goal():
         elif type == 'secret':
             self.sprite = (TILESIZE, 0, TILESIZE, TILESIZE*1.5)
         self.spritesheet = img_flag
-        self.anim = 1
-        self.frame = math.floor(self.anim/10)
+        self.frame = 0
+        self.anim = 0
 
     def collide(self, player):
         if self.rect.colliderect(player.rect):
@@ -76,6 +76,10 @@ class Goal():
         for player in playerList:
             player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=(self.sprite[0], self.frame*(TILESIZE*1.5), self.sprite[2], self.sprite[3]))
             self.collide(player)
+        self.anim += 1
+        if self.anim > 59:
+            self.anim = 0
+        self.frame = math.floor(self.anim/20)
 
 #not objects
 class Tile():
