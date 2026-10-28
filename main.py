@@ -1,6 +1,6 @@
 import os
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
-import pygame, xml.etree.ElementTree as ET, math, sys
+import pygame, xml.etree.ElementTree as ET, math, sys, time
 pygame.mixer.init()
 pygame.font.init()
 WIDTH = 640
@@ -11,11 +11,17 @@ pygame.display.set_caption("Attempt 2")
 pygame.display.set_icon(icon)
 clock = pygame.time.Clock()
 
+font_s = pygame.font.Font('assets/global/95.otf')
+font = pygame.font.Font('assets/global/95.otf', size=24)
+font_m = pygame.font.Font('assets/global/95.otf', size=32)
+font_l = pygame.font.Font('assets/global/95.otf', size=36)
+
 TILESIZE = 40
 FPS = 60
 FADE_O = 255 #opaque
 FADE_T = 0 #transparent
-PLAYERS = 4
+PLAYERS = 1
+MINUTE = 3600
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
@@ -26,6 +32,7 @@ img_flag = loadimg('assets/global/flags.png')
 snd_spring = pygame.mixer.Sound('assets/global/sfx/spring.mp3')
 snd_die = pygame.mixer.Sound('assets/global/sfx/death.mp3')
 snd_fall = pygame.mixer.Sound('assets/global/sfx/fall.mp3')
+snd_win = pygame.mixer.Sound('assets/global/sfx/tada.mp3')
 
 def ease(t):
     return 1 - ((1 - t) ** 3)
@@ -203,18 +210,22 @@ class Player:
         self.fadeLayer.fill((0,0,0,255))
         self.fadeLayer.set_alpha(0)
         self.controls = []
+        self.keysDown = []
         for button in controls:
-            self.controls.append([button, False])
+            self.controls.append(button)
+            self.keysDown.append(False)
+        self.timer = 0
+        self.score = 0
 
     def reset(self):
         global currentMap
         self.size = 30
         self.jumps = [2, 1]
-        self.deathTimer = 0
+        self.deathTimer, self.winTimer = 0, -1
         self.offsetX = 0
         self.offsetY = 0
         self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1]+10, self.size, self.size)
-        self.cameraPos = (-currentMap.spawnPos[0]+(WIDTH/2-20), -currentMap.spawnPos[1]+(HEIGHT/2-20))
+        self.cameraPos = (-self.rect[0]+(WIDTH/2-20), -self.rect[1]+10+(HEIGHT/2-20))
         self.xVel = 0
         self.yVel = 0
         self.grav = 1
@@ -225,6 +236,7 @@ class Player:
         self.won = False
         self.fadeTime = 0
         self.fadeStart, self.fadeEnd = FADE_O, FADE_T
+        TIMEOFFSET = pygame.time.get_ticks()
 
     def setPos(self, x, y):
         self.rect = pygame.Rect(x, y, self.size, self.size)
@@ -244,20 +256,45 @@ class Player:
 
     def win(self, exitType):
         global playerList
-        if self.won == False:
-            self.setFadeVars(FADE_T, FADE_O)
-        self.won = exitType
+        if not self.won:
+            self.setFadeVars(100, 100)
+            self.score = int(self.score)
+            if self.timer < 1*MINUTE:
+                self.score += 5000
+            elif self.timer < 2*MINUTE:
+                self.score += 3000
+            elif self.timer < 3*MINUTE:
+                self.score += 1000
+            elif self.timer < 4*MINUTE:
+                self.score += 500
+            elif self.timer < 5*MINUTE:
+                self.score += 100
+            self.won = exitType
+            if self.won == 'secret':
+                self.score += 1000
         allWon = True
         for player in playerList:
             if player.won == False:
                 allWon = False
-        if self.fadeTime >= 2:
-            self.setFadeVars(FADE_O, FADE_T)
-            if len(playerList) == 1:
-                currentMap.mus.stop()
-                currentMap.mus.play()
-            self.reset()
-            self.allWon = False
+        if allWon and self.winTimer == -1:
+            snd_win.play()
+            currentMap.mus.stop()
+            for player in playerList:
+                player.winTimer = 300
+        if self.winTimer > 0:
+            self.winTimer -= 1
+        if checkKeypress([pygame.K_RETURN])[0] and allWon:
+            for player in playerList:
+                player.setFadeVars(FADE_O, FADE_T)
+                if len(playerList) == 1:
+                    currentMap.mus.stop()
+                player.reset()
+                player.timer = 0
+                player.winTimer = -1
+                player.score = 0
+            allWon = False
+            currentMap.mus.play()
+            
 
     def die(self, deathType):
         global playerList
@@ -277,10 +314,7 @@ class Player:
         if self.deathTimer == 0:
             if len(playerList) == 1:
                 currentMap.mus.play()
-            tempControls = []
-            for button in self.controls:
-                tempControls.append(button[0])
-                self.reset()
+            self.reset()
 
     def jump(self):
         if self.yVel < 0:
@@ -329,8 +363,8 @@ class Player:
         self.yVel += self.grav/2
 
         if pressedKeys[0]:
-            if self.controls[0][1] == False:
-                self.controls[0][1] = True
+            if self.keysDown[1] == False:
+                self.keysDown[1] = True
                 if self.jumps[1] > 0:
                     if self.coyoteTime > 0 or self.jumps[0]-1 == self.jumps[1]:
                         self.jumps[1] -= 1
@@ -340,7 +374,7 @@ class Player:
                             self.jumps[1] = 0
                             self.jump()
         else:
-            self.controls[0][1] = False
+            self.keysDown[1] = False
         self.changePos(0, self.yVel)
 
         nearbyTiles = self.getNearbyTiles()
@@ -398,6 +432,118 @@ class Player:
         global playerList
         playerList.remove(self)
 
+    def getTime(self):
+        sec = math.floor(self.timer/60)%60
+        min = math.floor(math.floor(self.timer/60)/60)
+        ms = int(self.timer*1000/60)%1000 #fake ms
+        if abs(sec) < 10:
+            sec = f'0{sec}'
+        if abs(min) < 10:
+            min = f'0{min}'
+        if abs(int(ms)) < 10:
+            ms = f'0{ms}'
+        if abs(int(ms)) < 100:
+            ms = f'0{ms}'
+        timer = f'{min}:{sec}"{ms}'
+        return timer
+
+    def drawUI(self):
+        global playerList
+        if not self.won:
+            timer, timer_rect = drawText(f'Time: {self.getTime()}')
+            self.score = int(self.score)
+            for exponent in range(5):
+                if abs(int(self.score)) < 10^(exponent+1):
+                    self.score = f'0{self.score}'
+
+            score, score_rect = drawText(f'Score: {self.score}')
+
+            timer_rect.topleft = (10, 10)
+            score_rect.topright = (WIDTH-10, 10)
+
+            self.camera.blit(timer, timer_rect)
+            self.camera.blit(score, score_rect)
+        else:
+            allWon = True
+            winners = len(playerList)
+            for player in playerList:
+                if player.won == False:
+                    allWon = False
+                    winners -= 1
+            if not allWon:
+                waiting, waiting_rect = drawText(f'Waiting for players...', font=font_l)
+                playersWon, playersWon_rect = drawText(f'{winners}/{len(playerList)}')
+
+                waiting_rect.center = (WIDTH/2, HEIGHT/3)
+                playersWon_rect.center =(WIDTH/2, HEIGHT/7*3)
+
+                self.camera.blit(waiting, waiting_rect)
+                self.camera.blit(playersWon, playersWon_rect)
+            else:
+                youwin, youwin_rect = drawText('You Won!', font=font_l)
+                youwin_rect.center = (WIDTH/2, HEIGHT/4)
+                self.camera.blit(youwin, youwin_rect)
+
+                if self.winTimer <= 240:
+                    finalTime, finalTime_rect = drawText(f'Final Time: {self.getTime()}', font_m)
+                    finalTime_rect.center = (WIDTH/2, HEIGHT/7*3)
+                    self.camera.blit(finalTime, finalTime_rect)
+
+                if self.winTimer <= 180:
+                    timeBonus = 0
+                    tempScore = int(self.score)
+                    if self.timer < 1*MINUTE:
+                        tempScore -= 5000
+                        timeBonus = 5000
+                    elif self.timer < 2*MINUTE:
+                        tempScore -= 3000
+                        timeBonus = 3000
+                    elif self.timer < 3*MINUTE:
+                        tempScore -= 1000
+                        timeBonus = 1000
+                    elif self.timer < 4*MINUTE:
+                        tempScore -= 500
+                        timeBonus = 500
+                    elif self.timer < 5*MINUTE:
+                        tempScore -= 100
+                        timeBonus = 100
+                    if self.won == 'secret':
+                        tempScore -= 1000
+
+                    for exponent in range(5):
+                        if abs(int(tempScore)) < 10^(exponent+1):
+                            tempScore = f'0{tempScore}'
+
+                    score, score_rect = drawText(f'Score: {tempScore}', font_m)
+
+                    score_rect.center = (WIDTH/2, HEIGHT/7*4)
+
+                    self.camera.blit(score, score_rect)
+
+                if self.winTimer <= 120:
+                    if self.won == 'secret':
+                        secretExit, secretExit_rect = drawText(f'+1000 Secret Exit Bonus', font_s)
+                        secretExit_rect.center = (WIDTH/2, HEIGHT/14*9)
+                        self.camera.blit(secretExit, secretExit_rect)
+                    if timeBonus > 0:
+                        timeBonus, timeBonus_rect = drawText(f'+{timeBonus} Time Bonus', font_s)
+                        timeBonus_rect.center = (WIDTH/2, HEIGHT/7*5-10)
+                        self.camera.blit(timeBonus, timeBonus_rect)
+
+                if self.winTimer <= 60:
+                    for exponent in range(5):
+                        if abs(int(self.score)) < 10^(exponent+1):
+                            self.score = f'0{self.score}'
+                    finalScore, finalScore_rect = drawText(f'Final Score: {self.score}', font_l)  
+                    finalScore_rect.center = (WIDTH/2, HEIGHT/14*11)
+                    self.camera.blit(finalScore, finalScore_rect)              
+
+                if self.winTimer == 0:
+                    pressstart, pressstart_rect = drawText(f'Press ENTER to continue', font_s)
+                    pressstart_rect.bottomright = (WIDTH-10, HEIGHT-10)
+                    self.camera.blit(pressstart, pressstart_rect)
+
+
     def update(self):
         global playerList
         self.cameraMove()
@@ -409,9 +555,19 @@ class Player:
         currentMap.update(self)
         self.debug_drawRect()
 
+        if not self.won:
+            self.timer += 1
+
         self.fade()
 
         self.camera.blit(self.fadeLayer)
+
+        self.drawUI()
+
+def drawText(textStr, font=font):
+    text = font.render(textStr, True, (255, 255, 255))
+    text_rect = text.get_rect()
+    return text, text_rect
 
 def drawCamera():
     global playerList
@@ -433,7 +589,7 @@ def checkKeypress(keyList):
     keys = pygame.key.get_pressed()
     requestedKeys = []
     for key in keyList:
-        requestedKeys.append(keys[key[0]])
+        requestedKeys.append(keys[key])
     return requestedKeys
 
 def update():
