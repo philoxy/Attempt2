@@ -219,12 +219,12 @@ class Player:
 
     def reset(self):
         global currentMap
-        self.size = 30
+        self.size = 40
         self.jumps = [2, 1]
         self.deathTimer, self.winTimer = 0, -1
         self.offsetX = 0
         self.offsetY = 0
-        self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1]+10, self.size, self.size)
+        self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1]+10, int(self.size*3/4), self.size)
         self.cameraPos = (-self.rect[0]+(WIDTH/2-20), -self.rect[1]+10+(HEIGHT/2-20))
         self.xVel = 0
         self.yVel = 0
@@ -239,14 +239,14 @@ class Player:
         TIMEOFFSET = pygame.time.get_ticks()
 
     def setPos(self, x, y):
-        self.rect = pygame.Rect(x, y, self.size, self.size)
+        self.rect = pygame.Rect(x, y, int(self.size*3/4), self.size)
 
     def changePos(self, x, y):
-        self.rect = (self.rect[0] + x, self.rect[1] + y, self.size, self.size)
+        self.rect = (self.rect[0] + x, self.rect[1] + y, int(self.size*3/4), self.size)
 
     def debug_drawRect(self):
         global playerList
-        tempRect = (int(self.rect[0]-self.offsetX-currentMap.spawnPos[0]+(WIDTH/2-20)), int(self.rect[1]-math.floor(self.offsetY)-currentMap.spawnPos[1]+(HEIGHT/2-20)), self.size, self.size)
+        tempRect = (int(self.rect[0]-self.offsetX-currentMap.spawnPos[0]+(WIDTH/2-20)), int(self.rect[1]-math.floor(self.offsetY)-currentMap.spawnPos[1]+(HEIGHT/2-20)), int(self.size*3/4), self.size)
         pygame.draw.rect(self.camera, (255, 0, 0), tempRect)
 
         for player in playerList:
@@ -356,8 +356,8 @@ class Player:
             self.rect = pygame.Rect(0, self.rect[1], self.rect[2], self.rect[3])
             self.xVel = 0
 
-        if self.rect[0]+self.size > len(currentMap.map[0])*TILESIZE:
-            self.rect = pygame.Rect((len(currentMap.map[0]))*TILESIZE-self.size, self.rect[1], self.rect[2], self.rect[3])
+        if self.rect[0]+int(self.size*3/4) > len(currentMap.map[0])*TILESIZE:
+            self.rect = pygame.Rect((len(currentMap.map[0]))*TILESIZE-int(self.size*3/4), self.rect[1], self.rect[2], self.rect[3])
             self.xVel = 0
 
         self.yVel += self.grav/2
@@ -386,7 +386,7 @@ class Player:
 
     def cameraMove(self):
         global currentMap
-        rightCameraBorder = self.rect[0]+self.size > WIDTH*0.6-self.cameraPos[0] and self.xVel > 0.75 and self.cameraPos[0] > -(len(currentMap.map[0]))*TILESIZE+WIDTH
+        rightCameraBorder = self.rect[0]+int(self.size*3/4) > WIDTH*0.6-self.cameraPos[0] and self.xVel > 0.75 and self.cameraPos[0] > -(len(currentMap.map[0]))*TILESIZE+WIDTH
         leftCameraBorder = self.rect[0] < WIDTH*0.4-self.cameraPos[0] and self.xVel < -0.75 and self.cameraPos[0] < 0
         topCameraBorder = self.rect[1] < HEIGHT*0.4-self.cameraPos[1] and self.yVel < -0.75 and self.cameraPos[1] < 0
         bottomCameraBorder = self.rect[1]+self.size > HEIGHT*0.4-self.cameraPos[1] and self.yVel > 0.75 and self.cameraPos[1] > -(len(currentMap.map))*TILESIZE+HEIGHT
