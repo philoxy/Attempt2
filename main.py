@@ -12,6 +12,10 @@ pygame.display.set_icon(icon)
 clock = pygame.time.Clock()
 
 TILESIZE = 40
+FPS = 60
+FADE_O = 255 #opaque
+FADE_T = 0 #transparent
+PLAYERS = 1
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
@@ -21,10 +25,13 @@ img_flag = loadimg('assets/global/flags.png')
 
 snd_spring = pygame.mixer.Sound('assets/global/sfx/spring.mp3')
 snd_die = pygame.mixer.Sound('assets/global/sfx/death.mp3')
+snd_fall = pygame.mixer.Sound('assets/global/sfx/fall.mp3')
 
+def ease(t):
+    return 1 - ((1 - t) ** 3)
 
 #objects
-class Spring():
+class Spring:
     def __init__(self, x, y):
         self.pos = (int(x), int(y))
         self.spritesheet = img_obj
@@ -56,8 +63,9 @@ class Spring():
             player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=self.sprite)
             self.collide(player)
         
-class Goal():
+class Goal:
     def __init__(self, x, y, type):
+        self.type = type
         self.pos = (int(x), int(y)-TILESIZE/2)
         self.rect = pygame.Rect(self.pos[0], self.pos[1], TILESIZE, TILESIZE*1.5)
         if type == 'normal':
@@ -70,7 +78,7 @@ class Goal():
 
     def collide(self, player):
         if self.rect.colliderect(player.rect):
-            player.win()
+            player.win(self.type)
 
     def update(self):
         for player in playerList:
@@ -82,7 +90,7 @@ class Goal():
         self.frame = math.floor(self.anim/20)
 
 #not objects
-class Tile():
+class Tile:
     def __init__(self, x, y):
         self.rect = pygame.Rect(x*TILESIZE, y*TILESIZE, TILESIZE, TILESIZE)
     
@@ -113,7 +121,7 @@ class Tile():
                 object.yVel = 0
                 colliding = self.rect.colliderect(object.rect)
 
-class Map():
+class Map:
     def __init__(self, folder):
         self.path = folder
         self.spritesheet = loadimg(f'{folder}/tileset.png')
@@ -126,6 +134,12 @@ class Map():
         self.draw()
 
         self.mus.play(loops=-1)
+
+        try:
+            for player in playerList:
+                player.setFadeVars(FADE_O, FADE_T)
+        except NameError:
+            pass
 
     def loadObjects(self):
         tempObjects = self.objects
@@ -189,28 +203,26 @@ class Map():
         for object in self.objects:
             object.update()
 
-currentMap = Map('assets/lv1')
 
-playerList = []
-
-class Player():
+class Player:
     def __init__(self, controls):
-        global playerList
         self.reset()
         self.camera = pygame.Surface((WIDTH, HEIGHT))
+        self.fadeLayer = pygame.Surface((WIDTH,HEIGHT), pygame.SRCALPHA)
+        self.fadeLayer.fill((0,0,0,255))
+        self.fadeLayer.set_alpha(0)
         self.controls = []
         for button in controls:
             self.controls.append([button, False])
-        playerList.append(self)
 
     def reset(self):
         global currentMap
         self.size = 30
-        self.jumps = [2, 0]
+        self.jumps = [2, 1]
         self.deathTimer = 0
         self.offsetX = 0
         self.offsetY = 0
-        self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1], self.size, self.size)
+        self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1]+10, self.size, self.size)
         self.cameraPos = (-currentMap.spawnPos[0]+(WIDTH/2-20), -currentMap.spawnPos[1]+(HEIGHT/2-20))
         self.xVel = 0
         self.yVel = 0
@@ -220,6 +232,8 @@ class Player():
         self.speed = 5
         self.coyoteTime = 0
         self.won = False
+        self.fadeTime = 0
+        self.fadeStart, self.fadeEnd = FADE_O, FADE_T
 
     def setPos(self, x, y):
         self.rect = pygame.Rect(x, y, self.size, self.size)
@@ -237,17 +251,36 @@ class Player():
                 tempRect = (int(player.rect[0]-int(self.offsetX)-currentMap.spawnPos[0]+(WIDTH/2-20)), int(player.rect[1]-int(self.offsetY)-currentMap.spawnPos[1]+(HEIGHT/2-20)), player.size, player.size)
                 pygame.draw.rect(self.camera, (255, 0, 0), tempRect)
 
-    def win(self):
-        self.won = True
-        sys.exit()
+    def win(self, exitType):
+        global playerList
+        if self.won == False:
+            self.setFadeVars(FADE_T, FADE_O)
+        self.won = exitType
+        allWon = True
+        for player in playerList:
+            if player.won == False:
+                allWon = False
+        if self.fadeTime >= 2 and allWon:
+            self.setFadeVars(FADE_O, FADE_T)
+            currentMap.mus.stop()
+            currentMap.mus.play()
+            self.reset()
+            self.allWon = False
 
-    def die(self):
+
+
+    def die(self, deathType):
         global playerList
         if len(playerList) == 1:
             currentMap.mus.stop()
         if self.deathTimer == 0:
-            snd_die.play()
-            self.deathTimer = 60
+            self.setFadeVars(FADE_T, FADE_O)
+            self.fadeTime = 0
+            if deathType == 'spike':
+                snd_die.play()
+            elif deathType == 'fell':
+                snd_fall.play()
+            self.deathTimer = FPS
         self.deathTimer -= 1
         if self.deathTimer == 0:
             if len(playerList) == 1:
@@ -255,7 +288,7 @@ class Player():
             tempControls = []
             for button in self.controls:
                 tempControls.append(button[0])
-            self.reset()
+                self.reset()
 
     def jump(self):
         if self.yVel < 0:
@@ -263,6 +296,14 @@ class Player():
         else:
             jumpMultiplier = 1
         self.yVel = -self.grav*10*jumpMultiplier
+
+    def setFadeVars(self, start, end):
+        self.fadeTime = 0
+        self.fadeStart, self.fadeEnd = start, end
+
+    def fade(self):
+        self.fadeLayer.set_alpha(pygame.math.lerp(self.fadeStart, self.fadeEnd, ease(self.fadeTime)))
+        self.fadeTime += 1/FPS*2
 
     def move(self):
         global currentMap, playerList
@@ -320,7 +361,6 @@ class Player():
         global currentMap
         rightCameraBorder = self.rect[0]+self.size > WIDTH*0.6-self.cameraPos[0] and self.xVel > 0.75 and self.cameraPos[0] > -(len(currentMap.map[0]))*TILESIZE+WIDTH
         leftCameraBorder = self.rect[0] < WIDTH*0.4-self.cameraPos[0] and self.xVel < -0.75 and self.cameraPos[0] < 0
-        #if i dont add this the camera breaks
         topCameraBorder = self.rect[1] < HEIGHT*0.4-self.cameraPos[1] and self.yVel < -0.75 and self.cameraPos[1] < 0
         bottomCameraBorder = self.rect[1]+self.size > HEIGHT*0.4-self.cameraPos[1] and self.yVel > 0.75 and self.cameraPos[1] > -(len(currentMap.map))*TILESIZE+HEIGHT
 
@@ -371,20 +411,18 @@ class Player():
         if self.deathTimer == 0 and not self.won:
             self.move()
         if self.rect[1] > (len(currentMap.map)+2)*TILESIZE:
-            self.die()
+            self.die('fell')
         self.camera.fill((255, 255, 255))
         currentMap.drawBG()
         currentMap.update()
         for player in playerList:
             player.debug_drawRect()
 
+        self.fade()
+
+        self.camera.blit(self.fadeLayer)
+
         drawCamera()
-
-P1 = Player([pygame.K_w, pygame.K_a, pygame.K_s, pygame.K_d])
-#P2 = Player([pygame.K_UP, pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT])
-#P3 = Player([pygame.K_t, pygame.K_f, pygame.K_g, pygame.K_h])
-#P4 = Player([pygame.K_i, pygame.K_j, pygame.K_k, pygame.K_l])
-
 
 def drawCamera():
     global playerList
@@ -410,7 +448,7 @@ def checkKeypress(keyList):
 
 def update():
     global playerList
-    clock.tick(60)
+    clock.tick(FPS)
 
     screen.fill((255, 255, 255))
 
@@ -418,6 +456,29 @@ def update():
         player.update()
 
     pygame.display.flip()
+
+currentMap = Map('assets/lv1')
+
+playerList = []
+#controls: up, left, down, right
+P1 = Player([pygame.K_w, pygame.K_a, pygame.K_s, pygame.K_d])
+P2 = Player([pygame.K_UP, pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT])
+P3 = Player([pygame.K_t, pygame.K_f, pygame.K_g, pygame.K_h])
+P4 = Player([pygame.K_i, pygame.K_j, pygame.K_k, pygame.K_l])
+
+def setPlayerList():
+    global playerList
+    playerList = []
+    if PLAYERS >= 1:
+        playerList.append(P1)
+    if PLAYERS >= 2:
+        playerList.append(P2)
+    if PLAYERS >= 3:
+        playerList.append(P3)
+    if PLAYERS >= 4:
+        playerList.append(P4)
+
+setPlayerList()
 
 run = True
 
