@@ -15,7 +15,7 @@ TILESIZE = 40
 FPS = 60
 FADE_O = 255 #opaque
 FADE_T = 0 #transparent
-PLAYERS = 1
+PLAYERS = 4
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
@@ -137,12 +137,6 @@ class Map:
 
         self.mus.play(loops=-1)
 
-        try:
-            for player in playerList:
-                player.setFadeVars(FADE_O, FADE_T)
-        except NameError:
-            pass
-
     def loadObjects(self):
         tempObjects = self.objects
         self.objects = []
@@ -192,16 +186,13 @@ class Map:
                 else:
                     self.tiles[y][x] = None
 
-    def drawBG(self):
-        global playerList
-        for player in playerList:
-            player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640-640, 0))
-            player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640, 0))
+    def drawBG(self, player):
+        player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640-640, 0))
+        player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640, 0))
                     
-    def update(self):
-        global playerList
-        for player in playerList:
-            player.camera.blit(self.mapsurf, dest=player.cameraPos)
+    def update(self, player):
+        self.drawBG(player)
+        player.camera.blit(self.mapsurf, dest=player.cameraPos)
         for object in self.objects:
             object.update()
 
@@ -270,8 +261,6 @@ class Player:
             self.reset()
             self.allWon = False
 
-
-
     def die(self, deathType):
         global playerList
         if len(playerList) == 1:
@@ -309,6 +298,7 @@ class Player:
     def fade(self):
         self.fadeLayer.set_alpha(pygame.math.lerp(self.fadeStart, self.fadeEnd, ease(self.fadeTime)))
         self.fadeTime += 1/FPS*2
+
 
     def move(self):
         global currentMap, playerList
@@ -418,10 +408,8 @@ class Player:
         if self.rect[1] > (len(currentMap.map)+2)*TILESIZE:
             self.die('fell')
         self.camera.fill((255, 255, 255))
-        currentMap.drawBG()
-        currentMap.update()
-        for player in playerList:
-            player.debug_drawRect()
+        currentMap.update(self)
+        self.debug_drawRect()
 
         self.fade()
 
@@ -441,6 +429,7 @@ def drawCamera():
     elif players == 4:
         for player in range(len(playerList)):
             screen.blit(pygame.transform.scale_by(playerList[player].camera, 0.5), dest=(WIDTH/2*(player%2), HEIGHT/2*math.floor(player/2)))
+
 
 def checkKeypress(keyList):
     keys = pygame.key.get_pressed()
