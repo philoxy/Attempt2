@@ -259,13 +259,13 @@ class Player:
         if not self.won:
             self.setFadeVars(100, 100)
             self.score = int(self.score)
-            if self.timer < 1*MINUTE:
+            if self.timer < MINUTE/2:
                 self.score += 5000
-            elif self.timer < 2*MINUTE:
+            elif self.timer < 1*MINUTE:
                 self.score += 3000
-            elif self.timer < 3*MINUTE:
+            elif self.timer < 2*MINUTE:
                 self.score += 1000
-            elif self.timer < 4*MINUTE:
+            elif self.timer < 3*MINUTE:
                 self.score += 500
             elif self.timer < 5*MINUTE:
                 self.score += 100
@@ -492,16 +492,16 @@ class Player:
                 if self.winTimer <= 180:
                     timeBonus = 0
                     tempScore = int(self.score)
-                    if self.timer < 1*MINUTE:
+                    if self.timer < MINUTE/2:
                         tempScore -= 5000
                         timeBonus = 5000
-                    elif self.timer < 2*MINUTE:
+                    elif self.timer < 1*MINUTE:
                         tempScore -= 3000
                         timeBonus = 3000
-                    elif self.timer < 3*MINUTE:
+                    elif self.timer < 2*MINUTE:
                         tempScore -= 1000
                         timeBonus = 1000
-                    elif self.timer < 4*MINUTE:
+                    elif self.timer < 3*MINUTE:
                         tempScore -= 500
                         timeBonus = 500
                     elif self.timer < 5*MINUTE:
