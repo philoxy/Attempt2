@@ -49,7 +49,7 @@ class Spring:
             self.activateTimer = 30
 
 
-    def update(self):
+    def update(self, player):
         global playerList
 
         if self.activateTimer > 0:
@@ -61,9 +61,8 @@ class Spring:
         if self.activateTimer == 28:
             snd_spring.play()
 
-        for player in playerList:
-            player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=self.sprite)
-            self.collide(player)
+        player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=self.sprite)
+        self.collide(player)
         
 class Goal:
     def __init__(self, x, y, type):
@@ -82,10 +81,9 @@ class Goal:
         if self.rect.colliderect(player.rect):
             player.win(self.type)
 
-    def update(self):
-        for player in playerList:
-            player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=(self.sprite[0], self.frame*(TILESIZE*1.5), self.sprite[2], self.sprite[3]))
-            self.collide(player)
+    def update(self, player):
+        player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=(self.sprite[0], self.frame*(TILESIZE*1.5), self.sprite[2], self.sprite[3]))
+        self.collide(player)
         self.anim += 1
         if self.anim > 59:
             self.anim = 0
@@ -194,7 +192,7 @@ class Map:
         self.drawBG(player)
         player.camera.blit(self.mapsurf, dest=player.cameraPos)
         for object in self.objects:
-            object.update()
+            object.update(player)
 
 
 class Player:
