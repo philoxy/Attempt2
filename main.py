@@ -40,14 +40,13 @@ class Spring:
         self.sprite = self.image_unboing
         self.activateTimer = 0
         self.imageRect = pygame.Rect(self.pos[0], self.pos[1]+(TILESIZE-25), TILESIZE, 25) #25 is the height of the spring image
+        self.prevPlayer = None
 
     def collide(self, object):
         if self.imageRect.colliderect(object.rect):
             object.yVel = -15
             object.jumps[1] = 1
             self.activateTimer = 30
-            snd_spring.stop()
-            snd_spring.play()
 
 
     def update(self):
@@ -58,6 +57,9 @@ class Spring:
             self.sprite = self.image_boing
         else:
             self.sprite = self.image_unboing
+
+        if self.activateTimer == 28:
+            snd_spring.play()
 
         for player in playerList:
             player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=self.sprite)
@@ -260,10 +262,11 @@ class Player:
         for player in playerList:
             if player.won == False:
                 allWon = False
-        if self.fadeTime >= 2 and allWon:
+        if self.fadeTime >= 2:
             self.setFadeVars(FADE_O, FADE_T)
-            currentMap.mus.stop()
-            currentMap.mus.play()
+            if len(playerList) == 1:
+                currentMap.mus.stop()
+                currentMap.mus.play()
             self.reset()
             self.allWon = False
 
@@ -277,8 +280,10 @@ class Player:
             self.setFadeVars(FADE_T, FADE_O)
             self.fadeTime = 0
             if deathType == 'spike':
+                snd_die.stop()
                 snd_die.play()
             elif deathType == 'fell':
+                snd_fall.stop()
                 snd_fall.play()
             self.deathTimer = FPS
         self.deathTimer -= 1
@@ -422,8 +427,6 @@ class Player:
 
         self.camera.blit(self.fadeLayer)
 
-        drawCamera()
-
 def drawCamera():
     global playerList
     players = len(playerList)
@@ -454,6 +457,8 @@ def update():
 
     for player in playerList:
         player.update()
+    
+    drawCamera()
 
     pygame.display.flip()
 
