@@ -20,8 +20,9 @@ TILESIZE = 40
 FPS = 60
 FADE_O = 255 #opaque
 FADE_T = 0 #transparent
-PLAYERS = 1
+PLAYERS = 2
 MINUTE = 3600
+SHOWPLAYERRECT = 0
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
@@ -203,7 +204,7 @@ class Map:
 
 
 class Player:
-    def __init__(self, controls):
+    def __init__(self, controls, char):
         self.reset()
         self.camera = pygame.Surface((WIDTH, HEIGHT))
         self.fadeLayer = pygame.Surface((WIDTH,HEIGHT), pygame.SRCALPHA)
@@ -216,15 +217,19 @@ class Player:
             self.keysDown.append(False)
         self.timer = 0
         self.score = 0
+        self.anim = 0
+        self.frame = 0
+        self.spritesheet = loadimg(f'assets/global/players/{char}.png')
 
     def reset(self):
         global currentMap
         self.size = 40
+        self.playerSprite = pygame.Surface((int(self.size*3/4), self.size), pygame.SRCALPHA)
         self.jumps = [2, 1]
         self.deathTimer, self.winTimer = 0, -1
         self.offsetX = 0
-        self.offsetY = 0
-        self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1]+10, int(self.size*3/4), self.size)
+        self.offsetY = -10
+        self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1], int(self.size*0.6), int(self.size*0.75))
         self.cameraPos = (-self.rect[0]+(WIDTH/2-20), -self.rect[1]+10+(HEIGHT/2-20))
         self.xVel = 0
         self.yVel = 0
@@ -236,22 +241,22 @@ class Player:
         self.won = False
         self.fadeTime = 0
         self.fadeStart, self.fadeEnd = FADE_O, FADE_T
-        TIMEOFFSET = pygame.time.get_ticks()
+        self.facing = 1
 
     def setPos(self, x, y):
-        self.rect = pygame.Rect(x, y, int(self.size*3/4), self.size)
+        self.rect = pygame.Rect(x, y, int(self.size*0.6), int(self.size*0.75))
 
     def changePos(self, x, y):
-        self.rect = (self.rect[0] + x, self.rect[1] + y, int(self.size*3/4), self.size)
+        self.rect = (self.rect[0] + x, self.rect[1] + y, int(self.size*0.6), int(self.size*0.75))
 
     def debug_drawRect(self):
         global playerList
-        tempRect = (int(self.rect[0]-self.offsetX-currentMap.spawnPos[0]+(WIDTH/2-20)), int(self.rect[1]-math.floor(self.offsetY)-currentMap.spawnPos[1]+(HEIGHT/2-20)), int(self.size*3/4), self.size)
+        tempRect = getPlayerRect(self, (self.offsetX, self.offsetY))
         pygame.draw.rect(self.camera, (255, 0, 0), tempRect)
 
         for player in playerList:
             if player != self:
-                tempRect = (int(player.rect[0]-int(self.offsetX)-currentMap.spawnPos[0]+(WIDTH/2-20)), int(player.rect[1]-int(self.offsetY)-currentMap.spawnPos[1]+(HEIGHT/2-20)), player.size, player.size)
+                tempRect = getPlayerRect(player, (self.offsetX, self.offsetY))
                 pygame.draw.rect(self.camera, (255, 0, 0), tempRect)
 
     def win(self, exitType):
@@ -334,6 +339,7 @@ class Player:
 
     def move(self):
         global currentMap, playerList
+
         pressedKeys = checkKeypress(self.controls)
         if pressedKeys[1]:
             self.facing = 0
@@ -343,6 +349,8 @@ class Player:
             self.xVel += self.speed/6
 
         self.xVel *= 0.9
+        self.anim += abs(self.xVel*1.5/6)/10
+        self.frame = int(self.anim)%4
 
         if abs(self.xVel) < 0.05:
             self.xVel = 0
@@ -356,8 +364,8 @@ class Player:
             self.rect = pygame.Rect(0, self.rect[1], self.rect[2], self.rect[3])
             self.xVel = 0
 
-        if self.rect[0]+int(self.size*3/4) > len(currentMap.map[0])*TILESIZE:
-            self.rect = pygame.Rect((len(currentMap.map[0]))*TILESIZE-int(self.size*3/4), self.rect[1], self.rect[2], self.rect[3])
+        if self.rect[0]+self.rect[2] > len(currentMap.map[0])*TILESIZE:
+            self.rect = pygame.Rect((len(currentMap.map[0]))*TILESIZE-self.rect[2], self.rect[1], self.rect[2], self.rect[3])
             self.xVel = 0
 
         self.yVel += self.grav/2
@@ -543,6 +551,47 @@ class Player:
                     pressstart_rect.bottomright = (WIDTH-10, HEIGHT-10)
                     self.camera.blit(pressstart, pressstart_rect)
 
+    def drawPlayer(self):
+        global playerList
+
+        for player in playerList:
+            if player != self:
+                player.playerSprite.fill((0,0,0,0)) #wow this is inefficient
+
+                if abs(player.xVel) > 1:
+                    sprite = (player.frame*30, 0, 30, 40)
+                else:
+                    sprite = (0, 40, 30, 40)
+                if player.yVel < 0:
+                    sprite = (30, 40, 30, 40)
+
+                player.playerSprite.blit(player.spritesheet, area=sprite)
+
+                if player.facing == 0:
+                    player.playerSprite = pygame.transform.flip(player.playerSprite, True, False)
+
+                tempRect = getPlayerRect(player, (self.offsetX, self.offsetY))
+                tempRect = (tempRect[0]-3, tempRect[1]-10, tempRect[2], tempRect[3])
+                self.camera.blit(player.playerSprite, dest=tempRect)
+                
+
+        self.playerSprite.fill((0,0,0,0))
+
+        if abs(self.xVel) > 1:
+            sprite = (self.frame*30, 0, 30, 40)
+        else:
+            sprite = (0, 40, 30, 40)
+        if self.yVel < 0:
+            sprite = (30, 40, 30, 40)
+
+        self.playerSprite.blit(self.spritesheet, area=sprite)
+
+        if self.facing == 0:
+            self.playerSprite = pygame.transform.flip(self.playerSprite, True, False)
+
+        tempRect = getPlayerRect(self, (self.offsetX, self.offsetY))
+        tempRect = (tempRect[0]-3, tempRect[1]-10, tempRect[2], tempRect[3])
+        self.camera.blit(self.playerSprite, dest=tempRect)
 
     def update(self):
         global playerList
@@ -553,7 +602,9 @@ class Player:
             self.die('fell')
         self.camera.fill((255, 255, 255))
         currentMap.update(self)
-        self.debug_drawRect()
+        if SHOWPLAYERRECT == 1:
+            self.debug_drawRect()
+        self.drawPlayer()
 
         if not self.won:
             self.timer += 1
@@ -563,6 +614,9 @@ class Player:
         self.camera.blit(self.fadeLayer)
 
         self.drawUI()
+
+def getPlayerRect(player, offsets):
+    return (int(player.rect[0]-offsets[0]-currentMap.spawnPos[0]+(WIDTH/2-20)), int(player.rect[1]-math.floor(offsets[1])-currentMap.spawnPos[1]+(HEIGHT/2-20)), player.rect[2], player.rect[3])
 
 def drawText(textStr, font=font):
     text = font.render(textStr, True, (255, 255, 255))
@@ -609,10 +663,10 @@ currentMap = Map('assets/lv1')
 
 playerList = []
 #controls: up, left, down, right
-P1 = Player([pygame.K_w, pygame.K_a, pygame.K_s, pygame.K_d])
-P2 = Player([pygame.K_UP, pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT])
-P3 = Player([pygame.K_t, pygame.K_f, pygame.K_g, pygame.K_h])
-P4 = Player([pygame.K_i, pygame.K_j, pygame.K_k, pygame.K_l])
+P1 = Player([pygame.K_w, pygame.K_a, pygame.K_s, pygame.K_d], 'soday')
+P2 = Player([pygame.K_UP, pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT], 'soday')
+P3 = Player([pygame.K_t, pygame.K_f, pygame.K_g, pygame.K_h], 'soday')
+P4 = Player([pygame.K_i, pygame.K_j, pygame.K_k, pygame.K_l], 'soday')
 
 def setPlayerList():
     global playerList
