@@ -137,9 +137,17 @@ class Map:
         self.bg = loadimg(f'{folder}/bg.png')
         self.mus = pygame.mixer.Sound(f'{folder}/mus.mp3')
         with open(f'{folder}/mus.pxy', 'r') as file:
-            mus_md = file.read()
-            self.mus_title = mus_md[0]
-            self.mus_artist = mus_md[1]
+            mus_md = file.readlines()
+            mus_info = f'{mus_md[0]} - {mus_md[1]}'
+            mus_info = ''.join(mus_info.splitlines())
+        mus_info, mus_info_rect = drawText(f'{mus_info}', font=font_s)
+        note = loadimg('assets/global/note.png')
+        self.musPopup = pygame.Surface((22+mus_info_rect[2]+2,mus_info_rect[3]), pygame.SRCALPHA)
+        self.musPopup.fill((0,0,0,50))
+        self.musPopup.blit(note, dest=(1, 1))
+        self.musPopup.blit(mus_info, dest=(22, 1))
+        self.musPopupTimer = 0
+        self.musPopupPos = 0
         self.map = []
         self.parsetmx(folder)
         self.loadObjects()
@@ -204,6 +212,13 @@ class Map:
     def update(self, player):
         self.drawBG(player)
         player.camera.blit(self.mapsurf, dest=player.cameraPos)
+        if self.musPopupTimer < 210:
+            self.musPopupTimer += 1
+            if self.musPopupTimer <= 30:
+                self.musPopupPos = (self.musPopupTimer/30-1)*self.musPopup.get_width()
+            elif self.musPopupTimer >= 180:
+                self.musPopupPos = ((self.musPopupTimer-150)/30-1)*-self.musPopup.get_width()
+            player.camera.blit(self.musPopup, (self.musPopupPos, HEIGHT-40))
         for object in self.objects:
             object.update(player)
 
