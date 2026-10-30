@@ -580,29 +580,12 @@ class Player:
                 if self.winTimer < 0:
                     self.camera.blit(self.fadeLayer)
 
-    def drawPlayer(self):
+    def drawPlayer(self, recur=True):
         global playerList
 
-        for player in playerList:
-            if player != self:
-                player.playerSprite.fill((0,0,0,0)) #wow this is inefficient
-
-                if abs(player.xVel) > 1:
-                    sprite = (player.frame*30, 0, 30, 40)
-                else:
-                    sprite = (0, 40, 30, 40)
-                if player.yVel < 0:
-                    sprite = (30, 40, 30, 40)
-
-                player.playerSprite.blit(player.spritesheet, area=sprite)
-
-                if player.facing == 0:
-                    player.playerSprite = pygame.transform.flip(player.playerSprite, True, False)
-
-                tempRect = getPlayerRect(player, (self.offsetX, self.offsetY))
-                tempRect = (tempRect[0]-3, tempRect[1]-10, tempRect[2], tempRect[3])
-                self.camera.blit(player.playerSprite, dest=tempRect)
-                
+        if recur:
+            for player in playerList:
+                player.drawPlayer(recur=False)
 
         self.playerSprite.fill((0,0,0,0))
 
@@ -612,6 +595,8 @@ class Player:
             sprite = (0, 40, 30, 40)
         if self.yVel < 0:
             sprite = (30, 40, 30, 40)
+        elif self.yVel > 0:
+            sprite = (60, 40, 30, 40)
 
         self.playerSprite.blit(self.spritesheet, area=sprite)
 
