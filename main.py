@@ -677,7 +677,7 @@ currentMap = Map('assets/lv1')
 playerList = []
 #controls: up, left, down, right
 P1 = Player([pygame.K_w, pygame.K_a, pygame.K_s, pygame.K_d], 'soday')
-P2 = Player([pygame.K_UP, pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT], 'purplesoday')
+P2 = Player([pygame.K_UP, pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT], 'soday')
 P3 = Player([pygame.K_t, pygame.K_f, pygame.K_g, pygame.K_h], 'soday')
 P4 = Player([pygame.K_i, pygame.K_j, pygame.K_k, pygame.K_l], 'soday')
 
