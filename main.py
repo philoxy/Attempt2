@@ -1,6 +1,6 @@
 import os
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
-import pygame, xml.etree.ElementTree as ET, math, sys, time
+import pygame, xml.etree.ElementTree as ET, math, sys, time, json
 pygame.mixer.init()
 pygame.font.init()
 WIDTH = 640
@@ -20,9 +20,9 @@ TILESIZE = 40
 FPS = 60
 FADE_O = 255 #opaque
 FADE_T = 0 #transparent
-PLAYERS = 2
+PLAYERS = 1
 MINUTE = 3600
-SHOWPLAYERRECT = 0
+SHOWPLAYERRECT = 1
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
@@ -41,7 +41,7 @@ def ease(t):
 #objects
 class Spring:
     def __init__(self, x, y):
-        self.pos = (int(x), int(y))
+        self.pos = (int(float(x)), int(float(y)))
         self.spritesheet = img_obj
         self.image_unboing = (0, 0, TILESIZE, TILESIZE)
         self.image_boing = (TILESIZE, 0, TILESIZE, TILESIZE)
@@ -69,13 +69,13 @@ class Spring:
         if self.activateTimer == 28:
             snd_spring.play()
 
-        player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=self.sprite)
+        player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0]+2, player.cameraPos[1]+self.pos[1]+1), area=self.sprite)
         self.collide(player)
         
 class Goal:
     def __init__(self, x, y, type):
         self.type = type
-        self.pos = (int(x), int(y)-TILESIZE/2)
+        self.pos = (int(float(x)), int(float(y))-TILESIZE/2)
         self.rect = pygame.Rect(self.pos[0], self.pos[1], TILESIZE, TILESIZE*1.5)
         if type == 'normal':
             self.sprite = (0, 0, TILESIZE, TILESIZE*1.5)
@@ -99,8 +99,9 @@ class Goal:
 
 #not objects
 class Tile:
-    def __init__(self, x, y):
+    def __init__(self, x, y, collide):
         self.rect = pygame.Rect(x*TILESIZE, y*TILESIZE, TILESIZE, TILESIZE)
+        self.bg = not collide
     
     def collide(self, object, direction):
         if direction == 'x':
@@ -118,11 +119,11 @@ class Tile:
         elif direction == 'y':
             colliding = self.rect.colliderect(object.rect)
             if object.yVel < 0:
-                changeY = 1
+                changeY = 0.5
             elif object.yVel > 0:
-                changeY = -1
+                changeY = -0.5
             while colliding:
-                if changeY == -1:
+                if changeY == -0.5:
                     object.jumps[1] = object.jumps[0]
                     object.coyoteTime = 8
                 object.changePos(0, changeY)
@@ -135,6 +136,10 @@ class Map:
         self.spritesheet = loadimg(f'{folder}/tileset.png')
         self.bg = loadimg(f'{folder}/bg.png')
         self.mus = pygame.mixer.Sound(f'{folder}/mus.mp3')
+        with open(f'{folder}/mus.pxy', 'r') as file:
+            mus_md = file.read()
+            self.mus_title = mus_md[0]
+            self.mus_artist = mus_md[1]
         self.map = []
         self.parsetmx(folder)
         self.loadObjects()
@@ -186,9 +191,9 @@ class Map:
             for tile in row:
                 tile = int(tile)
                 x += 1
-                if tile != 0:
+                if 0 < tile <= 25:
                     self.mapsurf.blit(self.spritesheet, dest=(x*TILESIZE, y*TILESIZE), area=(((tile-1)%5)*TILESIZE, math.floor((tile-1)/5)*TILESIZE, TILESIZE, TILESIZE))
-                    self.tiles[y][x] = Tile(x, y)
+                    self.tiles[y][x] = Tile(x, y, collide=True)
                 else:
                     self.tiles[y][x] = None
 
@@ -206,7 +211,7 @@ class Map:
 class Player:
     def __init__(self, controls, char):
         self.reset()
-        self.camera = pygame.Surface((WIDTH, HEIGHT))
+        self.camera = pygame.Surface((WIDTH, HEIGHT), pygame.SCALED)
         self.fadeLayer = pygame.Surface((WIDTH,HEIGHT), pygame.SRCALPHA)
         self.fadeLayer.fill((0,0,0,255))
         self.fadeLayer.set_alpha(0)
@@ -339,7 +344,6 @@ class Player:
 
     def move(self):
         global currentMap, playerList
-
         pressedKeys = checkKeypress(self.controls)
         if pressedKeys[1]:
             self.facing = 0
@@ -348,7 +352,8 @@ class Player:
             self.facing = 1
             self.xVel += self.speed/6
 
-        self.xVel *= 0.9
+        if not(abs(self.yVel) > 0 and not pressedKeys[1] and not pressedKeys[3]):     
+            self.xVel *= 0.9
         self.anim += abs(self.xVel*1.5/6)/10
         self.frame = int(self.anim)%4
 
@@ -429,7 +434,7 @@ class Player:
         for row in range(yMin, yMax):
             for tile in range(xMin, xMax):
                 try:
-                    if currentMap.tiles[row][tile] != None:
+                    if currentMap.tiles[row][tile] != None and not currentMap.tiles[row][tile].bg:
                         nearbyTiles.append(currentMap.tiles[row][tile])
                 except IndexError:
                     pass
@@ -595,9 +600,9 @@ class Player:
 
     def update(self):
         global playerList
-        self.cameraMove()
         if self.deathTimer == 0 and not self.won:
             self.move()
+            self.cameraMove()
         if self.rect[1] > (len(currentMap.map)+2)*TILESIZE:
             self.die('fell')
         self.camera.fill((255, 255, 255))
@@ -616,7 +621,7 @@ class Player:
         self.drawUI()
 
 def getPlayerRect(player, offsets):
-    return (int(player.rect[0]-offsets[0]-currentMap.spawnPos[0]+(WIDTH/2-20)), int(player.rect[1]-math.floor(offsets[1])-currentMap.spawnPos[1]+(HEIGHT/2-20)), player.rect[2], player.rect[3])
+    return (int(player.rect[0]-offsets[0]-currentMap.spawnPos[0]+(WIDTH/2-20)), int(player.rect[1]-offsets[1]-currentMap.spawnPos[1]+(HEIGHT/2-20)), player.rect[2], player.rect[3])
 
 def drawText(textStr, font=font):
     text = font.render(textStr, True, (255, 255, 255))
@@ -647,7 +652,7 @@ def checkKeypress(keyList):
     return requestedKeys
 
 def update():
-    global playerList
+    global playerList, screen
     clock.tick(FPS)
 
     screen.fill((255, 255, 255))
@@ -664,7 +669,7 @@ currentMap = Map('assets/lv1')
 playerList = []
 #controls: up, left, down, right
 P1 = Player([pygame.K_w, pygame.K_a, pygame.K_s, pygame.K_d], 'soday')
-P2 = Player([pygame.K_UP, pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT], 'soday')
+P2 = Player([pygame.K_UP, pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT], 'purplesoday')
 P3 = Player([pygame.K_t, pygame.K_f, pygame.K_g, pygame.K_h], 'soday')
 P4 = Player([pygame.K_i, pygame.K_j, pygame.K_k, pygame.K_l], 'soday')
 
