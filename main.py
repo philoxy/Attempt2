@@ -22,7 +22,7 @@ FADE_O = 255 #opaque
 FADE_T = 0 #transparent
 PLAYERS = 1
 MINUTE = 3600
-SHOWPLAYERRECT = 1
+SHOWPLAYERRECT = 0
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
@@ -291,19 +291,21 @@ class Player:
             currentMap.mus.stop()
             for player in playerList:
                 player.winTimer = 300
-        if self.winTimer > 0:
+        if self.winTimer != 0:
             self.winTimer -= 1
         if checkKeypress([pygame.K_RETURN])[0] and allWon:
             for player in playerList:
-                player.setFadeVars(FADE_O, FADE_T)
-                if len(playerList) == 1:
-                    currentMap.mus.stop()
-                player.reset()
-                player.timer = 0
-                player.winTimer = -1
-                player.score = 0
-            allWon = False
-            currentMap.mus.play()
+                player.setFadeVars(100, FADE_O)
+                player.winTimer = -2
+        if self.winTimer == -30:
+            if len(playerList) == 1:
+                currentMap.mus.stop()
+            player.reset()
+            player.timer = 0
+            player.winTimer = -1
+            player.score = 0
+        allWon = False
+        currentMap.mus.play()
             
 
     def die(self, deathType):
@@ -463,6 +465,7 @@ class Player:
     def drawUI(self):
         global playerList
         if not self.won:
+            self.camera.blit(self.fadeLayer)
             timer, timer_rect = drawText(f'Time: {self.getTime()}')
             self.score = int(self.score)
             for exponent in range(5):
@@ -477,6 +480,7 @@ class Player:
             self.camera.blit(timer, timer_rect)
             self.camera.blit(score, score_rect)
         else:
+            self.camera.blit(self.fadeLayer)
             allWon = True
             winners = len(playerList)
             for player in playerList:
@@ -492,7 +496,10 @@ class Player:
 
                 self.camera.blit(waiting, waiting_rect)
                 self.camera.blit(playersWon, playersWon_rect)
+
             else:
+                if self.winTimer >= 0:
+                    self.camera.blit(self.fadeLayer)
                 youwin, youwin_rect = drawText('You Won!', font=font_l)
                 youwin_rect.center = (WIDTH/2, HEIGHT/4)
                 self.camera.blit(youwin, youwin_rect)
@@ -555,6 +562,8 @@ class Player:
                     pressstart, pressstart_rect = drawText(f'Press ENTER to continue', font_s)
                     pressstart_rect.bottomright = (WIDTH-10, HEIGHT-10)
                     self.camera.blit(pressstart, pressstart_rect)
+                if self.winTimer < 0:
+                    self.camera.blit(self.fadeLayer)
 
     def drawPlayer(self):
         global playerList
@@ -616,9 +625,8 @@ class Player:
 
         self.fade()
 
-        self.camera.blit(self.fadeLayer)
-
         self.drawUI()
+
 
 def getPlayerRect(player, offsets):
     return (int(player.rect[0]-offsets[0]-currentMap.spawnPos[0]+(WIDTH/2-20)), int(player.rect[1]-offsets[1]-currentMap.spawnPos[1]+(HEIGHT/2-20)), player.rect[2], player.rect[3])
