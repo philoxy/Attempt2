@@ -53,11 +53,12 @@ class Spring:
     def collide(self, object):
         if self.imageRect.colliderect(object.rect):
             object.yVel = -15
-            object.jumps[1] = 1
+            if isinstance(object, Player):
+                object.jumps[1] = 1
             self.activateTimer = 30
 
 
-    def update(self, player):
+    def update(self, player=None):
         global playerList
 
         if self.activateTimer > 0:
@@ -69,8 +70,9 @@ class Spring:
         if self.activateTimer == 28:
             snd_spring.play()
 
-        player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0]+2, player.cameraPos[1]+self.pos[1]+1), area=self.sprite)
-        self.collide(player)
+        if player != None:
+            player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0]+2, player.cameraPos[1]+self.pos[1]+1), area=self.sprite)
+            self.collide(player)
         
 class Goal:
     def __init__(self, x, y, type):
@@ -96,6 +98,25 @@ class Goal:
         if self.anim > 59:
             self.anim = 0
         self.frame = math.floor(self.anim/20)
+
+class Spike:
+    def __init__(self, x, y):
+        self.pos = (int(float(x)), int(float(y)))
+        self.sprite = (80, 0, 40, 40)
+        self.spritesheet = img_obj
+        self.rect = pygame.Rect(self.pos[0]+16, self.pos[1]+16, TILESIZE-28, TILESIZE-22) #random values
+
+    def collide(self, object):
+        if self.rect.colliderect(object.rect):
+            if isinstance(object, Player):
+                if not object.dead:
+                    object.deathType = 'spike'
+                    object.dead = True
+
+    def update(self, player):
+        player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=self.sprite)
+        self.collide(player)
+
 
 #not objects
 class Tile:
@@ -123,9 +144,10 @@ class Tile:
             elif object.yVel > 0:
                 changeY = -0.5
             while colliding:
-                if changeY == -0.5:
-                    object.jumps[1] = object.jumps[0]
-                    object.coyoteTime = 8
+                if isinstance(object, Player):
+                    if changeY == -0.5:
+                        object.jumps[1] = object.jumps[0]
+                        object.coyoteTime = 8
                 object.changePos(0, changeY)
                 object.yVel = 0
                 colliding = self.rect.colliderect(object.rect)
@@ -170,6 +192,8 @@ class Map:
             elif name == 'secretexit' and secretexit == False:
                 self.objects.append(Goal(x, y, 'secret'))
                 secretexit == True
+            elif name == 'spike':
+                self.objects.append(Spike(x, y))
 
     def parsetmx(self, folder): #i put it in a function because its ugly
         tree = ET.parse(f'{folder}/map.tmx')
@@ -212,6 +236,8 @@ class Map:
     def update(self, player):
         self.drawBG(player)
         player.camera.blit(self.mapsurf, dest=player.cameraPos)
+        for object in self.objects:
+            object.update(player)
         if self.musPopupTimer < 210:
             self.musPopupTimer += 1
             if self.musPopupTimer <= 30:
@@ -219,8 +245,6 @@ class Map:
             elif self.musPopupTimer >= 180:
                 self.musPopupPos = ((self.musPopupTimer-150)/30-1)*-self.musPopup.get_width()
             player.camera.blit(self.musPopup, (self.musPopupPos, HEIGHT-40))
-        for object in self.objects:
-            object.update(player)
 
 
 class Player:
@@ -262,6 +286,8 @@ class Player:
         self.fadeTime = 0
         self.fadeStart, self.fadeEnd = FADE_O, FADE_T
         self.facing = 1
+        self.dead = False
+        self.deathType = ''
 
     def setPos(self, x, y):
         self.rect = pygame.Rect(x, y, int(self.size*0.6), int(self.size*0.75))
@@ -280,7 +306,7 @@ class Player:
                 pygame.draw.rect(self.camera, (255, 0, 0), tempRect)
 
     def win(self, exitType):
-        global playerList
+        global playerList, currentMap
         if not self.won:
             self.setFadeVars(100, 100)
             self.score = int(self.score)
@@ -315,12 +341,13 @@ class Player:
         if self.winTimer == -30:
             if len(playerList) == 1:
                 currentMap.mus.stop()
-            player.reset()
-            player.timer = 0
-            player.winTimer = -1
-            player.score = 0
-        allWon = False
-        currentMap.mus.play()
+            for player in playerList:
+                player.reset()
+                player.timer = 0
+                player.winTimer = -1
+                player.score = 0
+            allWon = False
+            currentMap.mus.play()
             
 
     def die(self, deathType):
@@ -328,16 +355,22 @@ class Player:
         if len(playerList) == 1:
             currentMap.mus.stop()
         if self.deathTimer == 0:
-            self.setFadeVars(FADE_T, FADE_O)
             self.fadeTime = 0
             if deathType == 'spike':
                 snd_die.stop()
                 snd_die.play()
+                self.yVel = -10
+                self.deathTimer = FPS
+                self.dead = True
             elif deathType == 'fell':
                 snd_fall.stop()
                 snd_fall.play()
-            self.deathTimer = FPS
+                self.deathTimer = FPS
+                self.dead = True
+            self.deathType = deathType
+            self.setFadeVars(FADE_T, FADE_O)
         self.deathTimer -= 1
+
         if self.deathTimer == 0:
             if len(playerList) == 1:
                 currentMap.mus.play()
@@ -362,37 +395,38 @@ class Player:
     def move(self):
         global currentMap, playerList
         pressedKeys = checkKeypress(self.controls)
-        if pressedKeys[1]:
-            self.facing = 0
-            self.xVel -= self.speed/6
-        elif pressedKeys[3]:
-            self.facing = 1
-            self.xVel += self.speed/6
+        if not self.dead:
+            if pressedKeys[1]:
+                self.facing = 0
+                self.xVel -= self.speed/6
+            elif pressedKeys[3]:
+                self.facing = 1
+                self.xVel += self.speed/6
 
-        if not(abs(self.yVel) > 0 and not pressedKeys[1] and not pressedKeys[3]):     
-            self.xVel *= 0.9
-        self.anim += abs(self.xVel*1.5/6)/10
-        self.frame = int(self.anim)%4
+            if not(abs(self.yVel) > 0 and not pressedKeys[1] and not pressedKeys[3]):     
+                self.xVel *= 0.9
+            self.anim += abs(self.xVel*1.5/6)/10
+            self.frame = int(self.anim)%4
 
-        if abs(self.xVel) < 0.05:
-            self.xVel = 0
-        self.changePos(self.xVel, 0)
+            if abs(self.xVel) < 0.05:
+                self.xVel = 0
+            self.changePos(self.xVel, 0)
 
-        nearbyTiles = self.getNearbyTiles()
-        for tile in nearbyTiles:
-            tile.collide(self, 'x')
+            nearbyTiles = self.getNearbyTiles()
+            for tile in nearbyTiles:
+                tile.collide(self, 'x')
 
-        if self.rect[0] < 0:
-            self.rect = pygame.Rect(0, self.rect[1], self.rect[2], self.rect[3])
-            self.xVel = 0
+            if self.rect[0] < 0:
+                self.rect = pygame.Rect(0, self.rect[1], self.rect[2], self.rect[3])
+                self.xVel = 0
 
-        if self.rect[0]+self.rect[2] > len(currentMap.map[0])*TILESIZE:
-            self.rect = pygame.Rect((len(currentMap.map[0]))*TILESIZE-self.rect[2], self.rect[1], self.rect[2], self.rect[3])
-            self.xVel = 0
+            if self.rect[0]+self.rect[2] > len(currentMap.map[0])*TILESIZE:
+                self.rect = pygame.Rect((len(currentMap.map[0]))*TILESIZE-self.rect[2], self.rect[1], self.rect[2], self.rect[3])
+                self.xVel = 0
 
         self.yVel += self.grav/2
 
-        if pressedKeys[0]:
+        if pressedKeys[0] and not self.dead:
             if self.keysDown[1] == False:
                 self.keysDown[1] = True
                 if self.jumps[1] > 0:
@@ -597,6 +631,8 @@ class Player:
             sprite = (30, 40, 30, 40)
         elif self.yVel > 0:
             sprite = (60, 40, 30, 40)
+        if self.dead:
+            sprite = (90, 40, 30, 40)
 
         self.playerSprite.blit(self.spritesheet, area=sprite)
 
@@ -609,11 +645,14 @@ class Player:
 
     def update(self):
         global playerList
-        if self.deathTimer == 0 and not self.won:
+        if not self.won:
             self.move()
             self.cameraMove()
+        if self.dead:
+            self.die(self.deathType)
         if self.rect[1] > (len(currentMap.map)+2)*TILESIZE:
-            self.die('fell')
+            self.deathType = 'fell'
+            self.dead = True
         self.camera.fill((255, 255, 255))
         currentMap.update(self)
         if SHOWPLAYERRECT == 1:

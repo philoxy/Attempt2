@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="80" height="40" tilewidth="40" tileheight="40" infinite="0" nextlayerid="8" nextobjectid="15">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="80" height="40" tilewidth="40" tileheight="40" infinite="0" nextlayerid="8" nextobjectid="21">
  <tileset firstgid="1" source="tileset.tsx"/>
  <layer id="1" name="Tiles" width="80" height="40">
   <data encoding="csv">
@@ -50,5 +50,11 @@
   <object id="2" name="spring" x="640" y="720" width="40" height="40"/>
   <object id="4" name="exit" x="160" y="1200" width="40" height="40"/>
   <object id="12" name="secretexit" x="40" y="80" width="40" height="40"/>
+  <object id="15" name="spike" x="680" y="1000" width="40" height="40"/>
+  <object id="16" name="spike" x="720" y="1000" width="40" height="40"/>
+  <object id="17" name="spike" x="760" y="1000" width="40" height="40"/>
+  <object id="18" name="spike" x="800" y="1000" width="40" height="40"/>
+  <object id="19" name="spike" x="840" y="1000" width="40" height="40"/>
+  <object id="20" name="spike" x="880" y="1000" width="40" height="40"/>
  </objectgroup>
 </map>
