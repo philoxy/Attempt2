@@ -6,34 +6,36 @@ pygame.font.init()
 WIDTH = 640
 HEIGHT = 480
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED|pygame.RESIZABLE, vsync=1)
-icon = pygame.image.load("assets/global/icon.png").convert_alpha()
+icon = pygame.image.load("assets/icon.png").convert_alpha()
 pygame.display.set_caption("Attempt 2")
 pygame.display.set_icon(icon)
 clock = pygame.time.Clock()
 
-font_s = pygame.font.Font('assets/global/95.otf')
-font = pygame.font.Font('assets/global/95.otf', size=24)
-font_m = pygame.font.Font('assets/global/95.otf', size=32)
-font_l = pygame.font.Font('assets/global/95.otf', size=36)
+font_s = pygame.font.Font('assets/95.otf')
+font = pygame.font.Font('assets/95.otf', size=24)
+font_m = pygame.font.Font('assets/95.otf', size=32)
+font_l = pygame.font.Font('assets/95.otf', size=36)
 
 TILESIZE = 40
 FPS = 60
 FADE_O = 255 #opaque
 FADE_T = 0 #transparent
-PLAYERS = 2
+PLAYERS = 1
 MINUTE = 3600
 SHOWPLAYERRECT = 0
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
 
-img_obj = loadimg('assets/global/objects.png')
-img_flag = loadimg('assets/global/flags.png')
+img_obj = loadimg('assets/objects.png')
+img_flag = loadimg('assets/flags.png')
+img_rock = loadimg('assets/tilesets/rock.png')
+#img_grass = loadimg('assets/tilesets/blugrass.png')
 
-snd_spring = pygame.mixer.Sound('assets/global/sfx/spring.mp3')
-snd_die = pygame.mixer.Sound('assets/global/sfx/death.mp3')
-snd_fall = pygame.mixer.Sound('assets/global/sfx/fall.mp3')
-snd_win = pygame.mixer.Sound('assets/global/sfx/tada.mp3')
+snd_spring = pygame.mixer.Sound('assets/sfx/spring.mp3')
+snd_die = pygame.mixer.Sound('assets/sfx/death.mp3')
+snd_fall = pygame.mixer.Sound('assets/sfx/fall.mp3')
+snd_win = pygame.mixer.Sound('assets/sfx/tada.mp3')
 
 def ease(t):
     return 1 - ((1 - t) ** 3)
@@ -42,7 +44,6 @@ def ease(t):
 class Spring:
     def __init__(self, x, y):
         self.pos = (int(float(x)), int(float(y)))
-        self.spritesheet = img_obj
         self.image_unboing = (0, 0, TILESIZE, TILESIZE)
         self.image_boing = (TILESIZE, 0, TILESIZE, TILESIZE)
         self.sprite = self.image_unboing
@@ -71,7 +72,7 @@ class Spring:
             snd_spring.play()
 
         if player != None:
-            player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0]+2, player.cameraPos[1]+self.pos[1]+1), area=self.sprite)
+            player.camera.blit(img_obj, dest=(player.cameraPos[0]+self.pos[0]+2, player.cameraPos[1]+self.pos[1]+1), area=self.sprite)
             self.collide(player)
         
 class Goal:
@@ -83,7 +84,6 @@ class Goal:
             self.sprite = (0, 0, TILESIZE, TILESIZE*1.5)
         elif type == 'secret':
             self.sprite = (TILESIZE, 0, TILESIZE, TILESIZE*1.5)
-        self.spritesheet = img_flag
         self.frame = 0
         self.anim = 0
 
@@ -92,7 +92,7 @@ class Goal:
             player.win(self.type)
 
     def update(self, player):
-        player.camera.blit(self.spritesheet, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=(self.sprite[0], self.frame*(TILESIZE*1.5), self.sprite[2], self.sprite[3]))
+        player.camera.blit(img_flag, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=(self.sprite[0], self.frame*(TILESIZE*1.5), self.sprite[2], self.sprite[3]))
         self.collide(player)
         self.anim += 1
         if self.anim > 59:
@@ -103,10 +103,9 @@ class Spike:
     def __init__(self, x, y, rotation):
         self.pos = (int(float(x)), int(float(y)))
         self.sprite = (80, 0, 40, 40)
-        self.spritesheet = img_obj
         self.rect = pygame.Rect(self.pos[0]+16, self.pos[1]+16, TILESIZE-28, TILESIZE-22) #random values
         self.image = pygame.Surface((40, 40), pygame.SRCALPHA)
-        self.image.blit(self.spritesheet, area=self.sprite)
+        self.image.blit(img_obj, area=self.sprite)
         if rotation != 0: #0 up 1 right 2 down 3 left
             self.image = pygame.transform.rotate(self.image, -rotation)
 
@@ -163,7 +162,6 @@ class Tile:
 class Map:
     def __init__(self, folder):
         self.path = folder
-        self.spritesheet = loadimg(f'{folder}/tileset.png')
         self.bg = loadimg(f'{folder}/bg.png')
         self.mus = pygame.mixer.Sound(f'{folder}/mus.mp3')
         with open(f'{folder}/mus.pxy', 'r') as file:
@@ -171,7 +169,7 @@ class Map:
             mus_info = f'{mus_md[0]} - {mus_md[1]}'
             mus_info = ''.join(mus_info.splitlines())
         mus_info, mus_info_rect = drawText(f'{mus_info}', font=font_s)
-        note = loadimg('assets/global/note.png')
+        note = loadimg('assets/note.png')
         self.musPopup = pygame.Surface((22+mus_info_rect[2]+2,mus_info_rect[3]), pygame.SRCALPHA)
         self.musPopup.fill((0,0,0,50))
         self.musPopup.blit(note, dest=(1, 1))
@@ -214,8 +212,11 @@ class Map:
     def parsetmx(self, folder): #i put it in a function because its ugly
         tree = ET.parse(f'{folder}/map.tmx')
         root = tree.getroot()
-        mapstr = root[2][0].text
-        self.objects = root[3]
+        for item in root:
+            if item.tag == "layer" and item.attrib["name"] == "Tiles":
+                mapstr = item.find("data").text
+            if item.tag == "objectgroup" and item.attrib["name"] == "Objects":
+                self.objects = item
         foundSpawn = False
         for object in self.objects:
             if object.attrib['type'] == 'Spawn':
@@ -244,7 +245,7 @@ class Map:
                 tile = int(tile)
                 x += 1
                 if 0 < tile <= 25:
-                    self.mapsurf.blit(self.spritesheet, dest=(x*TILESIZE, y*TILESIZE), area=(((tile-1)%5)*TILESIZE, math.floor((tile-1)/5)*TILESIZE, TILESIZE, TILESIZE))
+                    self.mapsurf.blit(img_rock, dest=(x*TILESIZE, y*TILESIZE), area=(((tile-1)%5)*TILESIZE, math.floor((tile-1)/5)*TILESIZE, TILESIZE, TILESIZE))
                     self.tiles[y][x] = Tile(x, y, collide=True)
                 else:
                     self.tiles[y][x] = None
@@ -284,7 +285,7 @@ class Player:
         self.score = 0
         self.anim = 0
         self.frame = 0
-        self.spritesheet = loadimg(f'assets/global/players/{char}.png')
+        self.spritesheet = loadimg(f'assets/players/{char}.png')
 
     def reset(self):
         global currentMap
@@ -416,6 +417,7 @@ class Player:
         global currentMap, playerList
         pressedKeys = checkKeypress(self.controls)
         if self.deathType == '':
+
             if pressedKeys[1]:
                 self.facing = 0
                 self.xVel -= self.speed/6
@@ -423,7 +425,18 @@ class Player:
                 self.facing = 1
                 self.xVel += self.speed/6
 
-        if self.deathType == '':
+            colliding = self.rect[0] < 0
+            while colliding:
+                self.xVel = 0
+                self.changePos(0.5, 0)
+                colliding = self.rect[0] < 0
+
+            colliding = self.rect[0]+self.rect[2] > len(currentMap.map[0])*TILESIZE
+            while colliding:
+                self.xVel = 0
+                self.changePos(-0.5, 0)
+                colliding = self.rect[0]+self.rect[2] > len(currentMap.map[0])*TILESIZE
+
             if not(abs(self.yVel) > 0 and not pressedKeys[1] and not pressedKeys[3]):     
                 self.xVel *= 0.9
             else:
@@ -441,14 +454,6 @@ class Player:
             nearbyTiles = self.getNearbyTiles()
             for tile in nearbyTiles:
                 tile.collide(self, 'x')
-
-            if self.rect[0] < 0:
-                self.rect = pygame.Rect(0, self.rect[1], self.rect[2], self.rect[3])
-                self.xVel = 0
-
-            if self.rect[0]+self.rect[2] > len(currentMap.map[0])*TILESIZE:
-                self.rect = pygame.Rect((len(currentMap.map[0]))*TILESIZE-self.rect[2], self.rect[1], self.rect[2], self.rect[3])
-                self.xVel = 0
 
         self.yVel += self.grav/2
 
@@ -473,6 +478,7 @@ class Player:
 
         if self.coyoteTime > 0:
             self.coyoteTime -= 1
+
     def cameraMove(self):
         global currentMap
         rightCameraBorder = self.rect[0]+int(self.size*3/4) > WIDTH*0.6-self.cameraPos[0] and self.xVel > 0.75 and self.cameraPos[0] > -(len(currentMap.map[0]))*TILESIZE+WIDTH
@@ -670,7 +676,8 @@ class Player:
         global playerList
         if not self.won:
             self.move()
-            self.cameraMove()
+            if self.deathType == '':
+                self.cameraMove()
         if self.deathType != '':
             self.die(self.deathType)
         if self.rect[1] > (len(currentMap.map)+2)*TILESIZE and self.deathType == '':
@@ -681,7 +688,7 @@ class Player:
             self.debug_drawRect()
         self.drawPlayer()
 
-        if not self.won:
+        if not self.won and self.deathType == '':
             self.timer += 1
 
         self.fade()
@@ -733,7 +740,7 @@ def update():
 
     pygame.display.flip()
 
-currentMap = Map('assets/lv1')
+currentMap = Map('assets/levels/lv1')
 
 playerList = []
 #controls: up, left, down, right
