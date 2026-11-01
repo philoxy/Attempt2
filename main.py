@@ -103,11 +103,17 @@ class Spike:
     def __init__(self, x, y, rotation):
         self.pos = (int(float(x)), int(float(y)))
         self.sprite = (80, 0, 40, 40)
+        rotation = round(rotation/90)
+        if rotation == 1:
+            self.pos = (self.pos[0], self.pos[1]+TILESIZE)
+        elif rotation == 2:
+            self.pos = (self.pos[0]-TILESIZE, self.pos[1]+TILESIZE)
+        elif rotation == 3:
+            self.pos = (self.pos[0]-TILESIZE, self.pos[1])
         self.rect = pygame.Rect(self.pos[0]+16, self.pos[1]+16, TILESIZE-28, TILESIZE-22) #random values
         self.image = pygame.Surface((40, 40), pygame.SRCALPHA)
         self.image.blit(img_obj, area=self.sprite)
-        if rotation != 0: #0 up 1 right 2 down 3 left
-            self.image = pygame.transform.rotate(self.image, -rotation)
+        self.image = pygame.transform.rotate(self.image, -rotation*90)
 
     def collide(self, object):
         if self.rect.colliderect(object.rect):
@@ -116,7 +122,9 @@ class Spike:
                     object.deathType = 'spike'
 
     def update(self, player):
-        player.camera.blit(self.image, dest=(player.cameraPos[0]+self.pos[0]+1, player.cameraPos[1]+self.pos[1]+1))
+        player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.pos[0], int(player.cameraPos[1])+self.pos[1]))
+        pygame.draw.rect(player.camera, (255, 255, 0), self.rect)
+
         self.collide(player)
 
 
@@ -176,11 +184,12 @@ class Map:
         self.musPopup.blit(mus_info, dest=(22, 1))
         self.musPopupTimer = 0
         self.musPopupPos = 0
-        self.map = []
+        self.map, self.bgmap = [], []
         self.parsetmx(folder)
         self.loadObjects()
-        self.tiles = self.map
-        self.draw()
+        self.map, self.tiles, self.mapsurf = self.draw(self.map)
+        self.bgmap, a, self.bgmapsurf = self.draw(self.bgmap, False)
+        self.bgmapsurf.fill((128,128,128), special_flags=pygame.BLEND_RGB_MULT)
 
         self.mus.play(loops=-1)
 
@@ -189,7 +198,10 @@ class Map:
         self.objects = []
         exit, secretexit = False, False
         for object in tempObjects:
-            x, y, type = object.attrib['x'], int(object.attrib['y'])-TILESIZE, object.attrib['type']
+            try:
+                x, y, type = object.attrib['x'], int(object.attrib['y'])-TILESIZE, object.attrib['type']
+            except:
+                print("Couldn't load object: Unspecified type")
             match type:
                 case 'Spring':
                     self.objects.append(Spring(x, y))
@@ -213,8 +225,11 @@ class Map:
         tree = ET.parse(f'{folder}/map.tmx')
         root = tree.getroot()
         for item in root:
-            if item.tag == "layer" and item.attrib["name"] == "Tiles":
-                mapstr = item.find("data").text
+            if item.tag == "layer":
+                if item.attrib["name"] == "Tiles":
+                    mapstr = item.find("data").text
+                if item.attrib["name"] == "Background":
+                    bgmapstr = item.find("data").text
             if item.tag == "objectgroup" and item.attrib["name"] == "Objects":
                 self.objects = item
         foundSpawn = False
@@ -234,21 +249,32 @@ class Map:
         for row in range(len(self.map)-1):
             self.map[row].pop()
 
-    def draw(self):
-        self.mapsurf = pygame.Surface(( TILESIZE*len(self.map[0]), TILESIZE*len(self.map) ), pygame.SRCALPHA) #tilesize is 40 and im not changing that
-        self.mapsurf.convert_alpha()
+        tempBGMap = bgmapstr.split("\n")
+        for row in tempBGMap:
+            self.bgmap.append(row.split(","))
+        self.bgmap.pop(0)
+        self.bgmap.pop()
+        for row in range(len(self.bgmap)-1):
+            self.bgmap[row].pop()
+
+    def draw(self, map, collision=True):
+        mapsurf = pygame.Surface(( TILESIZE*len(map[0]), TILESIZE*len(map) ), pygame.SRCALPHA)
+        mapsurf.convert_alpha()
+        tiles = map
         x, y = -1, -1
-        for row in self.map:
+        for row in map:
             y += 1
             x = -1
             for tile in row:
                 tile = int(tile)
                 x += 1
                 if 0 < tile <= 25:
-                    self.mapsurf.blit(img_rock, dest=(x*TILESIZE, y*TILESIZE), area=(((tile-1)%5)*TILESIZE, math.floor((tile-1)/5)*TILESIZE, TILESIZE, TILESIZE))
-                    self.tiles[y][x] = Tile(x, y, collide=True)
+                    mapsurf.blit(img_rock, dest=(x*TILESIZE, y*TILESIZE), area=(((tile-1)%5)*TILESIZE, math.floor((tile-1)/5)*TILESIZE, TILESIZE, TILESIZE))
+                    tiles[y][x] = Tile(x, y, collide=collision)
                 else:
-                    self.tiles[y][x] = None
+                    tiles[y][x] = None
+
+        return map, tiles, mapsurf
 
     def drawBG(self, player):
         player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640-640, 0))
@@ -256,6 +282,7 @@ class Map:
                     
     def update(self, player):
         self.drawBG(player)
+        player.camera.blit(self.bgmapsurf, dest=player.cameraPos)
         player.camera.blit(self.mapsurf, dest=player.cameraPos)
         for object in self.objects:
             object.update(player)
@@ -312,10 +339,10 @@ class Player:
         self.deathType = ''
 
     def setPos(self, x, y):
-        self.rect = pygame.Rect(x, y, int(self.size*0.6), int(self.size*0.75))
+        self.rect = (x, y, self.rect[2], self.rect[3])
 
     def changePos(self, x, y):
-        self.rect = (self.rect[0] + x, self.rect[1] + y, int(self.size*0.6), int(self.size*0.75))
+        self.rect = (self.rect[0] + x, self.rect[1] + y, self.rect[2], self.rect[3])
 
     def debug_drawRect(self):
         global playerList
@@ -425,17 +452,13 @@ class Player:
                 self.facing = 1
                 self.xVel += self.speed/6
 
-            colliding = self.rect[0] < 0
-            while colliding:
+            if self.rect[0] < 0:
+                self.setPos(0, self.rect[1])
                 self.xVel = 0
-                self.changePos(0.5, 0)
-                colliding = self.rect[0] < 0
 
-            colliding = self.rect[0]+self.rect[2] > len(currentMap.map[0])*TILESIZE
-            while colliding:
-                self.xVel = 0
-                self.changePos(-0.5, 0)
-                colliding = self.rect[0]+self.rect[2] > len(currentMap.map[0])*TILESIZE
+            if self.rect[0]+self.rect[2] > len(currentMap.map[0])*TILESIZE:
+                self.setPos(len(currentMap.map[0])*TILESIZE-self.rect[2], self.rect[1])
+                self.xVel = 0 
 
             if not(abs(self.yVel) > 0 and not pressedKeys[1] and not pressedKeys[3]):     
                 self.xVel *= 0.9
@@ -700,7 +723,7 @@ def getPlayerRect(player, offsets):
     return (int(player.rect[0]-offsets[0]-currentMap.spawnPos[0]+(WIDTH/2-20)), int(player.rect[1]-offsets[1]-currentMap.spawnPos[1]+(HEIGHT/2-20)), player.rect[2], player.rect[3])
 
 def drawText(textStr, font=font):
-    text = font.render(textStr, True, (255, 255, 255))
+    text = font.render(textStr, False, (255, 255, 255))
     text_rect = text.get_rect()
     return text, text_rect
 
