@@ -1,3 +1,5 @@
+# by Philooxy | https://philoxy.github.io/
+
 import os
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 import pygame, xml.etree.ElementTree as ET, math, sys, time, json
@@ -72,7 +74,7 @@ class Spring:
             snd_spring.play()
 
         if player != None:
-            player.camera.blit(img_obj, dest=(player.cameraPos[0]+self.pos[0]+2, player.cameraPos[1]+self.pos[1]+1), area=self.sprite)
+            player.camera.blit(img_obj, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]), area=self.sprite)
             self.collide(player)
         
 class Goal:
@@ -201,7 +203,10 @@ class Map:
             try:
                 x, y, type = object.attrib['x'], int(object.attrib['y'])-TILESIZE, object.attrib['type']
             except:
-                print("Couldn't load object: Unspecified type")
+                print("Error: Failed 2 load object: No specified type!")
+                print(f'Object ID: {object.attrib['id']}')
+                print("Set the 'Class' value of this object to a valid object type!")
+                print("")
             match type:
                 case 'Spring':
                     self.objects.append(Spring(x, y))
@@ -219,9 +224,17 @@ class Map:
                     except KeyError:
                         rotation = 0
                     self.objects.append(Spike(x, y, rotation))
+                case 'Spawn':
+                    pass
+                case _:
+                    print("Error: Failed 2 load object: Unknown object type")
+                    print(f'Object ID: {object.attrib['id']}')
+                    print(f'Object Class: {object.attrib['type']}')
+                    print("Set the 'Class' value of this object to a valid object type!")
+                    print("")
 
 
-    def parsetmx(self, folder): #i put it in a function because its ugly
+    def parsetmx(self, folder):
         tree = ET.parse(f'{folder}/map.tmx')
         root = tree.getroot()
         for item in root:
@@ -234,12 +247,20 @@ class Map:
                 self.objects = item
         foundSpawn = False
         for object in self.objects:
-            if object.attrib['type'] == 'Spawn':
-                self.spawnPos = (int(object.attrib['x']), int(object.attrib['y']))
-                foundSpawn = True
-                break
-        #if not foundSpawn:
-            #self.spawnPos = (0, 0)
+            try:
+                if object.attrib['type'] == 'Spawn':
+                    self.spawnPos = (int(object.attrib['x']), int(object.attrib['y']))
+                    foundSpawn = True
+                    break
+            except KeyError:
+                pass
+        if not foundSpawn:
+            print("Error: No spawn point found!")
+            print("Please add a spawn object to the object layer of this level,")
+            print("and set the 'Class' variable to 'Spawn'.")
+            print("Setting spawn to default (0,0)...")
+            print("")
+            self.spawnPos = (0, 0)
 
         tempMap = mapstr.split("\n")
         for row in tempMap:
