@@ -45,18 +45,45 @@ def ease(t):
 
 #objects
 class Spring:
-    def __init__(self, x, y):
+    def __init__(self, x, y, rotation):
         self.pos = (int(float(x)), int(float(y)))
-        self.image_unboing = (0, 0, TILESIZE, TILESIZE)
-        self.image_boing = (TILESIZE, 0, TILESIZE, TILESIZE)
-        self.sprite = self.image_unboing
         self.activateTimer = 0
-        self.imageRect = pygame.Rect(self.pos[0], self.pos[1]+(TILESIZE-25), TILESIZE, 25) #25 is the height of the spring image
-        self.prevPlayer = None
+        self.boingness = 15
+        rotation = round(rotation/90)
+        self.rotation = rotation
+        match rotation:
+            case 0:
+                x, y, w, h = 0, TILESIZE-25, TILESIZE, 25  #less random values
+            case 1:
+                x, y, w, h = 0, 0, 25, TILESIZE
+                self.pos = (self.pos[0], self.pos[1]+TILESIZE)
+            case 2:
+                x, y, w, h = 0, 0, TILESIZE, 25
+                self.pos = (self.pos[0]-TILESIZE, self.pos[1]+TILESIZE)
+            case 3:
+                x, y, w, h = TILESIZE-25, 0, 25, TILESIZE
+                self.pos = (self.pos[0]-TILESIZE, self.pos[1])
+        self.rect = pygame.Rect(self.pos[0]+x, self.pos[1]+y, w, h)
+
+        self.image_unboing = pygame.Surface((TILESIZE, TILESIZE), pygame.SRCALPHA)
+        self.image_unboing.blit(img_obj, area=(0, 0, TILESIZE, TILESIZE))
+        self.image_unboing = pygame.transform.rotate(self.image_unboing, -rotation*90)
+
+        self.image_boing = pygame.Surface((TILESIZE, TILESIZE), pygame.SRCALPHA)
+        self.image_boing.blit(img_obj, area=(TILESIZE, 0, TILESIZE, TILESIZE))
+        self.image_boing = pygame.transform.rotate(self.image_boing, -rotation*90)
 
     def collide(self, object):
-        if self.imageRect.colliderect(object.rect):
-            object.yVel = -15
+        if self.rect.colliderect(object.rect):
+            match self.rotation:
+                case 0:
+                    object.yVel = -self.boingness
+                case 1:
+                    object.xVel = self.boingness
+                case 2:
+                    object.yVel = self.boingness
+                case 3:
+                    object.xVel = -self.boingness
             if isinstance(object, Player):
                 object.jumps[1] = 1
             self.activateTimer = 30
@@ -67,15 +94,15 @@ class Spring:
 
         if self.activateTimer > 0:
             self.activateTimer -= 1
-            self.sprite = self.image_boing
+            self.image = self.image_boing
         else:
-            self.sprite = self.image_unboing
+            self.image = self.image_unboing
 
         if self.activateTimer == 28:
             snd_spring.play()
 
         if player != None:
-            player.camera.blit(img_obj, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]), area=self.sprite)
+            player.camera.blit(self.image, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]))
             self.collide(player)
         
 class Goal:
@@ -91,7 +118,7 @@ class Goal:
         self.anim = 0
 
     def collide(self, player):
-        if self.rect.colliderect(player.rect):
+        if self.rect.colliderect(player.rect) and player.deathType == '':
             player.win(self.type)
 
     def update(self, player):
@@ -137,6 +164,30 @@ class Spike:
 
         self.collide(player)
 
+class Text:
+    def __init__(self, x, y, text, fontsize):
+        tempFont = pygame.font.Font('assets/95.otf', int(fontsize))
+        self.text, self.text_rect = drawText(text, tempFont)
+        self.text_rect.topleft = (float(x), float(y)+TILESIZE)
+
+    def update(self, player):
+        global playerList
+        if len(playerList) == 1:
+            player.camera.blit(self.text, dest=(int(player.cameraPos[0]+self.text_rect[0]), int(player.cameraPos[1]+self.text_rect[1]) ))
+
+class Checkpoint:
+    def __init__(self, x, y):
+        self.rect = pygame.Rect(x, y, TILESIZE, TILESIZE)
+        self.sprite = (120, 0, 40, 40)
+        self.pointChecked = False
+
+    def update(self, player):
+        if self.rect.colliderect(player.rect) and not self.pointChecked:
+            self.pointChecked = True
+            player.lastCheckpoint = (self.rect[0], self.rect[1])
+        if self.pointChecked:
+            self.sprite = (160, 0, 40, 40)
+        player.camera.blit(img_obj, dest=(player.cameraPos[0]+self.rect[0], player.cameraPos[1]+self.rect[1]), area=self.sprite)
 
 #not objects
 class Tile:
@@ -209,15 +260,19 @@ class Map:
         exit, secretexit = False, False
         for object in tempObjects:
             try:
-                x, y, type = object.attrib['x'], int(object.attrib['y'])-TILESIZE, object.attrib['type']
+                x, y, type = float(object.attrib['x']), float(object.attrib['y'])-TILESIZE, object.attrib['type']
             except:
-                print("Error: Failed 2 load object: No specified type!")
+                print("Error: Failed to load object: No specified type!")
                 print(f'Object ID: {object.attrib['id']}')
                 print("Set the 'Class' value of this object to a valid object type!")
                 print("")
             match type:
                 case 'Spring':
-                    self.objects.append(Spring(x, y))
+                    try:
+                        rotation = int(float(object.attrib['rotation']))
+                    except KeyError:
+                        rotation = 0
+                    self.objects.append(Spring(x, y, rotation))
                 case 'Exit':
                     if not exit:
                         self.objects.append(Goal(x, y, 'normal'))
@@ -232,12 +287,26 @@ class Map:
                     except KeyError:
                         rotation = 0
                     self.objects.append(Spike(x, y, rotation))
-                case 'Door':
-                    pass
+                case 'Text':
+                    text = object.find("text")
+                    if text.text == None:
+                        print("Error: Failed to load text object: No text specified")
+                        print(f'Object ID: {object.attrib['id']}')
+                        print("Please specify a text value!")
+                        print("Ignoring object...")
+                        print("")
+                    else:
+                        try:
+                            textSize = int(float(text.attrib["pixelsize"]))
+                        except KeyError:
+                            textSize = 16
+                        self.objects.append(Text(x, y, text.text, textSize))
+                case 'Checkpoint':
+                    self.objects.append(Checkpoint(x, y))
                 case 'Spawn':
                     pass
                 case _:
-                    print("Error: Failed 2 load object: Unknown object type")
+                    print("Error: Failed to load object: Unknown object type")
                     print(f'Object ID: {object.attrib['id']}')
                     print(f'Object Class: {object.attrib['type']}')
                     print("Set the 'Class' value of this object to a valid object type!")
@@ -329,6 +398,8 @@ class Map:
 
 class Player:
     def __init__(self, controls, char):
+        self.lastCheckpoint = (currentMap.spawnPos[0], currentMap.spawnPos[1]-TILESIZE)
+        self.spawnPoint = self.lastCheckpoint
         self.reset()
         self.camera = pygame.Surface((WIDTH, HEIGHT), pygame.SCALED)
         self.fadeLayer = pygame.Surface((WIDTH,HEIGHT), pygame.SRCALPHA)
@@ -352,9 +423,10 @@ class Player:
         self.jumps = [2, 1]
         self.deathTimer, self.winTimer = 0, -1
         self.offsetX = 0
-        self.offsetY = -10
-        self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1]-TILESIZE, int(self.size*0.6), int(self.size*0.75))
-        self.cameraPos = (-self.rect[0]+(WIDTH/2-20), -self.rect[1]-TILESIZE+10+(HEIGHT/2-20))
+        self.offsetY = 0
+        self.spawnPoint = self.lastCheckpoint
+        self.rect = pygame.Rect(self.lastCheckpoint[0], self.lastCheckpoint[1], int(self.size*0.6), int(self.size*0.75))
+        self.cameraPos = (-self.rect[0]+(WIDTH/2-20), -self.rect[1]-TILESIZE+(HEIGHT/2-20))
         self.xVel = 0
         self.yVel = 0
         self.grav = 1
@@ -426,8 +498,10 @@ class Player:
                 player.timer = 0
                 player.winTimer = -1
                 player.score = 0
+                player.lastCheckpoint = currentMap.spawnPos
             allWon = False
             currentMap.mus.play()
+
             
 
     def die(self, deathType):
@@ -493,16 +567,16 @@ class Player:
             else:
                 changeY = -0.5
 
-            if colliding and self.yVel < 0:
-                player.yVel = self.yVel
-            elif colliding:
-                self.yVel = 0
-                self.jumps[1] = self.jumps[0]
-
             while colliding:
                 self.changePos(0, changeY)
                 self.coyoteTime = 5
-
+                if self.yVel < 0:
+                    tempyVel = self.yVel
+                    self.yVel = player.yVel
+                    player.yVel = tempyVel
+                if self.yVel > 0:
+                    self.jumps[1] = self.jumps[0]
+                self.yVel = 0
                 if abs(player.xVel) > 0.5 and not checkKeypress([self.controls[1]])[0] and not checkKeypress([self.controls[3]])[0]:
                     self.xVel = player.xVel*1.1
                 colliding = pygame.Rect(self.rect).colliderect(player.rect)
@@ -801,7 +875,7 @@ class Player:
 
 
 def getPlayerRect(player, offsets):
-    return (int(player.rect[0]-offsets[0]-currentMap.spawnPos[0]+(WIDTH/2-20)), int(player.rect[1]-offsets[1]-currentMap.spawnPos[1]+(HEIGHT/2-20)), player.rect[2], player.rect[3])
+    return (int(player.rect[0]-offsets[0]-player.spawnPoint[0]+(WIDTH/2-20)), int(player.rect[1]-offsets[1]-player.spawnPoint[1]-TILESIZE+(HEIGHT/2-20)), player.rect[2], player.rect[3])
 
 def drawText(textStr, font=font):
     text = font.render(textStr, False, (255, 255, 255))
