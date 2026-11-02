@@ -22,7 +22,7 @@ TILESIZE = 40
 FPS = 60
 FADE_O = 255 #opaque
 FADE_T = 0 #transparent
-PLAYERS = 1
+PLAYERS = 2
 MINUTE = 3600
 SHOWHITBOXES = 0
 
