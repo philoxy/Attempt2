@@ -22,9 +22,10 @@ TILESIZE = 40
 FPS = 60
 FADE_O = 255 #opaque
 FADE_T = 0 #transparent
-PLAYERS = 2
+PLAYERS = 1
 MINUTE = 3600
 SHOWHITBOXES = 0
+PLAYERCOLLISION = 1
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
@@ -163,7 +164,7 @@ class Tile:
 
             elif direction == 'y':
                 colliding = self.rect.colliderect(object.rect)
-                if object.yVel < 0:
+                if object.yVel <= 0:
                     changeY = 0.5
                 elif object.yVel > 0:
                     changeY = -0.5
@@ -352,8 +353,8 @@ class Player:
         self.deathTimer, self.winTimer = 0, -1
         self.offsetX = 0
         self.offsetY = -10
-        self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1], int(self.size*0.6), int(self.size*0.75))
-        self.cameraPos = (-self.rect[0]+(WIDTH/2-20), -self.rect[1]+10+(HEIGHT/2-20))
+        self.rect = pygame.Rect(currentMap.spawnPos[0], currentMap.spawnPos[1]-TILESIZE, int(self.size*0.6), int(self.size*0.75))
+        self.cameraPos = (-self.rect[0]+(WIDTH/2-20), -self.rect[1]-TILESIZE+10+(HEIGHT/2-20))
         self.xVel = 0
         self.yVel = 0
         self.grav = 1
@@ -402,13 +403,13 @@ class Player:
             self.won = exitType
             if self.won == 'secret':
                 self.score += 1000
-            snd_win.play()
         allWon = True
         for player in playerList:
             if player.won == False:
                 allWon = False
         if allWon and self.winTimer == -1:
             currentMap.mus.stop()
+            snd_win.play()
             for player in playerList:
                 player.winTimer = 300
         if self.winTimer != 0 and self.winTimer != -1:
@@ -469,6 +470,43 @@ class Player:
         self.fadeLayer.set_alpha(pygame.math.lerp(self.fadeStart, self.fadeEnd, ease(self.fadeTime)))
         self.fadeTime += 1/FPS*2
 
+    def playerCollide(self, player, axis):
+        if axis == 'x':
+            colliding = pygame.Rect(self.rect).colliderect(player.rect)
+            if self.xVel < 0:
+                changeX = 0.5
+            else:
+                changeX = -0.5
+            if colliding:
+                if self.xVel > 0 and not checkKeypress([player.controls[3]])[0]:
+                    player.xVel = 2
+                elif self.xVel < 0 and not checkKeypress([player.controls[1]])[0]:
+                    player.xVel = -2
+            while colliding:
+                self.changePos(changeX, 0)
+                self.xVel = 0
+                colliding = pygame.Rect(self.rect).colliderect(player.rect)
+        elif axis == 'y':
+            colliding = pygame.Rect(self.rect).colliderect(player.rect)
+            if self.yVel < 0:
+                changeY = 0.5
+            else:
+                changeY = -0.5
+
+            if colliding and self.yVel < 0:
+                player.yVel = self.yVel
+            elif colliding:
+                self.yVel = 0
+                self.jumps[1] = self.jumps[0]
+
+            while colliding:
+                self.changePos(0, changeY)
+                self.coyoteTime = 5
+
+                if abs(player.xVel) > 0.5 and not checkKeypress([self.controls[1]])[0] and not checkKeypress([self.controls[3]])[0]:
+                    self.xVel = player.xVel*1.1
+                colliding = pygame.Rect(self.rect).colliderect(player.rect)
+
 
     def move(self):
         global currentMap, playerList
@@ -498,12 +536,20 @@ class Player:
             self.anim += abs(self.xVel*1.5/6)/10
             self.frame = int(self.anim)%4
 
-        if abs(self.xVel) < 0.05:
+        self.xVel = round(self.xVel, 2)
+
+        if abs(self.xVel) <= 0.05:
             self.xVel = 0
         self.changePos(self.xVel, 0)
 
 
+
         if self.deathType == '':
+            if PLAYERCOLLISION == 1:
+                for player in playerList:
+                    if player != self and not player.won:
+                        self.playerCollide(player, 'x')
+
             nearbyTiles = self.getNearbyTiles()
             for tile in nearbyTiles:
                 tile.collide(self, 'x')
@@ -524,6 +570,11 @@ class Player:
         else:
             self.keysDown[1] = False
         self.changePos(0, self.yVel)
+
+        if PLAYERCOLLISION == 1:
+            for player in playerList:
+                if player != self and not player.won:
+                    self.playerCollide(player, 'y')
 
         nearbyTiles = self.getNearbyTiles()
         for tile in nearbyTiles:
