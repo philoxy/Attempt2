@@ -402,16 +402,16 @@ class Player:
             self.won = exitType
             if self.won == 'secret':
                 self.score += 1000
+            snd_win.play()
         allWon = True
         for player in playerList:
             if player.won == False:
                 allWon = False
         if allWon and self.winTimer == -1:
-            snd_win.play()
             currentMap.mus.stop()
             for player in playerList:
                 player.winTimer = 300
-        if self.winTimer != 0:
+        if self.winTimer != 0 and self.winTimer != -1:
             self.winTimer -= 1
         if checkKeypress([pygame.K_RETURN])[0] and allWon:
             for player in playerList:
