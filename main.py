@@ -24,7 +24,7 @@ FADE_O = 255 #opaque
 FADE_T = 0 #transparent
 PLAYERS = 1
 MINUTE = 3600
-SHOWPLAYERRECT = 0
+SHOWHITBOXES = 0
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
@@ -106,13 +106,19 @@ class Spike:
         self.pos = (int(float(x)), int(float(y)))
         self.sprite = (80, 0, 40, 40)
         rotation = round(rotation/90)
-        if rotation == 1:
-            self.pos = (self.pos[0], self.pos[1]+TILESIZE)
-        elif rotation == 2:
-            self.pos = (self.pos[0]-TILESIZE, self.pos[1]+TILESIZE)
-        elif rotation == 3:
-            self.pos = (self.pos[0]-TILESIZE, self.pos[1])
-        self.rect = pygame.Rect(self.pos[0]+16, self.pos[1]+16, TILESIZE-28, TILESIZE-22) #random values
+        match rotation:
+            case 0:
+                x, y, w, h = 16, 10, 8, 20 #less random values
+            case 1:
+                x, y, w, h = 10+8, 16, 20, 8
+                self.pos = (self.pos[0], self.pos[1]+TILESIZE)
+            case 2:
+                x, y, w, h = 16, 10, 8, 20
+                self.pos = (self.pos[0]-TILESIZE, self.pos[1]+TILESIZE)
+            case 3:
+                x, y, w, h = 10+8, 16, 20, 8
+                self.pos = (self.pos[0]-TILESIZE, self.pos[1])
+        self.rect = pygame.Rect(self.pos[0]+x, self.pos[1]+y, w, h)
         self.image = pygame.Surface((40, 40), pygame.SRCALPHA)
         self.image.blit(img_obj, area=self.sprite)
         self.image = pygame.transform.rotate(self.image, -rotation*90)
@@ -125,7 +131,8 @@ class Spike:
 
     def update(self, player):
         player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.pos[0], int(player.cameraPos[1])+self.pos[1]))
-        pygame.draw.rect(player.camera, (255, 255, 0), self.rect)
+        if SHOWHITBOXES == 1:
+            pygame.draw.rect(player.camera, (255, 255, 0), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
 
         self.collide(player)
 
@@ -224,6 +231,8 @@ class Map:
                     except KeyError:
                         rotation = 0
                     self.objects.append(Spike(x, y, rotation))
+                case 'Door':
+                    pass
                 case 'Spawn':
                     pass
                 case _:
@@ -728,7 +737,7 @@ class Player:
             self.deathType = 'fell'
         self.camera.fill((255, 255, 255))
         currentMap.update(self)
-        if SHOWPLAYERRECT == 1:
+        if SHOWHITBOXES == 1:
             self.debug_drawRect()
         self.drawPlayer()
 
@@ -789,7 +798,7 @@ currentMap = Map('assets/levels/lv1')
 playerList = []
 #controls: up, left, down, right
 P1 = Player([pygame.K_w, pygame.K_a, pygame.K_s, pygame.K_d], 'soday')
-P2 = Player([pygame.K_UP, pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT], 'soday')
+P2 = Player([pygame.K_UP, pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT], 'donnie')
 P3 = Player([pygame.K_t, pygame.K_f, pygame.K_g, pygame.K_h], 'soday')
 P4 = Player([pygame.K_i, pygame.K_j, pygame.K_k, pygame.K_l], 'soday')
 
