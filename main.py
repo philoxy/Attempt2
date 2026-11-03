@@ -43,17 +43,50 @@ snd_win = pygame.mixer.Sound('assets/sfx/tada.mp3')
 def ease(t):
     return 1 - ((1 - t) ** 3)
 
+def collide(object, rect, direction):
+    doCollide = True
+    if isinstance(object, Player):
+        if object.deathType != '':
+            doCollide = False
+    if doCollide:
+        if direction == 'x':
+            colliding = rect.colliderect(object.rect)
+            if object.xVel < 0:
+                changeX = 0.1
+            elif object.xVel > 0:
+                changeX = -0.1
+
+            while colliding:
+                object.changePos(changeX, 0)
+                object.xVel = 0
+                colliding = not(pygame.Rect(object.rect).left == rect.right or pygame.Rect(object.rect).right == rect.left)
+
+        elif direction == 'y':
+            colliding = rect.colliderect(object.rect)
+            if object.yVel < 0:
+                changeY = 0.1
+            elif object.yVel > 0:
+                changeY = -0.1
+            while colliding:
+                if isinstance(object, Player):
+                    if changeY == -0.1:
+                        object.jumps[1] = object.jumps[0]
+                        object.coyoteTime = 8
+                object.changePos(0, changeY)
+                object.yVel = 0
+                colliding = not(pygame.Rect(object.rect).top == rect.bottom or pygame.Rect(object.rect).bottom == rect.top)
+
 #objects
 class Spring:
     def __init__(self, x, y, rotation):
-        self.pos = (int(float(x)), int(float(y)))
+        self.pos = (x, y)
         self.activateTimer = 0
         self.boingness = 15
         rotation = round(rotation/90)
         self.rotation = rotation
         match rotation:
             case 0:
-                x, y, w, h = 0, TILESIZE-25, TILESIZE, 25  #less random values
+                x, y, w, h = 0, TILESIZE-25, TILESIZE, 25
             case 1:
                 x, y, w, h = 0, 0, 25, TILESIZE
                 self.pos = (self.pos[0], self.pos[1]+TILESIZE)
@@ -108,7 +141,7 @@ class Spring:
 class Goal:
     def __init__(self, x, y, type):
         self.type = type
-        self.pos = (int(float(x)), int(float(y))-TILESIZE/2)
+        self.pos = (x, y-TILESIZE/2)
         self.rect = pygame.Rect(self.pos[0], self.pos[1], TILESIZE, TILESIZE*1.5)
         if type == 'normal':
             self.sprite = (0, 0, TILESIZE, TILESIZE*1.5)
@@ -131,7 +164,7 @@ class Goal:
 
 class Spike:
     def __init__(self, x, y, rotation):
-        self.pos = (int(float(x)), int(float(y)))
+        self.pos = (x, y)
         self.sprite = (80, 0, 40, 40)
         rotation = round(rotation/90)
         match rotation:
@@ -182,51 +215,91 @@ class Checkpoint:
         self.pointChecked = False
 
     def update(self, player):
-        if self.rect.colliderect(player.rect) and not self.pointChecked:
+        if self.rect.colliderect(player.rect) and not self.pointChecked and player.deathType == '':
             self.pointChecked = True
             player.lastCheckpoint = (self.rect[0], self.rect[1])
         if self.pointChecked:
             self.sprite = (160, 0, 40, 40)
-        player.camera.blit(img_obj, dest=(player.cameraPos[0]+self.rect[0], player.cameraPos[1]+self.rect[1]), area=self.sprite)
+        player.camera.blit(img_obj, dest=(int(player.cameraPos[0]+self.rect[0]), int(player.cameraPos[1]+self.rect[1]+math.sin(player.timer/20)*4-4)), area=self.sprite)
+        if SHOWHITBOXES == 1:
+            pygame.draw.rect(player.camera, (0, 255, 0), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
+
+class Door:
+    def __init__(self, x, y, id):
+        self.rect = pygame.Rect(x, y, TILESIZE, TILESIZE)
+        self.unlocked = False
+        self.id = int(id)
+
+    def update(self, player):
+        if self.unlocked:
+            self.sprite = (0, 0, 0, 0)
+        else:
+            self.sprite = (TILESIZE*2, TILESIZE, TILESIZE, TILESIZE)
+        player.camera.blit(img_obj, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]), area=self.sprite)
+
+class Button:
+    def __init__(self, x, y, rotation, doorIDs):
+        y += TILESIZE
+        self.pos = (x, y)
+        self.imagePos = (x, y)
+        self.rotation = round(rotation/90)
+        self.connectedDoorIDs = doorIDs
+        self.pressed = False
+        self.pressing = False
+        match self.rotation:
+            case 0:
+                x, y, w, h = 0, TILESIZE-5, TILESIZE, 5
+                x2, y2, w2, h2 = 6, TILESIZE-13, 28, 8
+                #x3, y3, w3, h3
+                self.imagePos = (self.pos[0], self.pos[1]-5)
+                self.pos = (self.pos[0], self.pos[1]-TILESIZE)
+            case 1:
+                x, y, w, h = 0, 0, 5, TILESIZE
+                x2, y2, w2, h2 = 5, 6, 8, 28
+                self.imagePos = (self.pos[0], self.pos[1]+TILESIZE-5)
+            case 2:
+                x, y, w, h = 0, 0, TILESIZE, 5
+                x2, y2, w2, h2 = 6, 5, 28, 8
+                self.imagePos = (self.pos[0]-TILESIZE, self.pos[1]+TILESIZE-5)
+                self.pos = (self.pos[0]-TILESIZE, self.pos[1])
+            case 3:
+                x, y, w, h = TILESIZE-5, 0, 5, TILESIZE
+                x2, y2, w2, h2 = TILESIZE-13, 6, 8, 28
+                self.imagePos = (self.pos[0]-TILESIZE, self.pos[1]-5)
+                self.pos = (self.pos[0]-TILESIZE, self.pos[1]-TILESIZE)
+
+        self.rect = pygame.Rect(self.pos[0]+x, self.pos[1]+y, w, h)
+        self.buttonrect = pygame.Rect(self.pos[0]+x2, self.pos[1]+y2, w2, h2)
+        self.image = pygame.Surface((TILESIZE, TILESIZE), pygame.SRCALPHA)
+        self.rect_button = self.buttonrect
+
+    def update(self, player):
+        global currentMap
+        if not self.pressed:
+            self.sprite = (0, TILESIZE, TILESIZE, TILESIZE)
+            self.rect_button = self.buttonrect
+        else:
+            self.sprite = (TILESIZE, TILESIZE, TILESIZE, TILESIZE)
+        self.image.fill((0,0,0,0))
+        self.image.blit(img_obj, area=self.sprite)
+        self.image = pygame.transform.rotate(self.image, -self.rotation*90)
+        if pygame.Rect(player.rect).colliderect(self.rect_button) and not self.pressed:
+            self.pressed = True
+            for door in currentMap.doors:
+                if door.id in self.connectedDoorIDs:
+                    door.unlocked = True
+
+        player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.imagePos[0], int(player.cameraPos[1])+self.imagePos[1]-TILESIZE+5))
+        if SHOWHITBOXES == 1:
+            pygame.draw.rect(player.camera, (0, 0, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
+            pygame.draw.rect(player.camera, (0, 255, 255), (int(player.cameraPos[0])+self.buttonrect[0], int(player.cameraPos[1])+self.buttonrect[1], self.buttonrect[2], self.buttonrect[3]))
 
 #not objects
 class Tile:
     def __init__(self, x, y, collide):
         self.rect = pygame.Rect(x*TILESIZE, y*TILESIZE, TILESIZE, TILESIZE)
         self.bg = not collide
-    
-    def collide(self, object, direction):
-        doCollide = True
-        if isinstance(object, Player):
-            if object.deathType != '':
-                doCollide = False
-        if doCollide:
-            if direction == 'x':
-                colliding = self.rect.colliderect(object.rect)
-                if object.xVel <= 0:
-                    changeX = 0.5
-                elif object.xVel > 0:
-                    changeX = -0.5
 
-                while colliding:
-                    object.changePos(changeX, 0)
-                    object.xVel = 0
-                    colliding = self.rect.colliderect(object.rect)
-
-            elif direction == 'y':
-                colliding = self.rect.colliderect(object.rect)
-                if object.yVel <= 0:
-                    changeY = 0.5
-                elif object.yVel > 0:
-                    changeY = -0.5
-                while colliding:
-                    if isinstance(object, Player):
-                        if changeY == -0.5:
-                            object.jumps[1] = object.jumps[0]
-                            object.coyoteTime = 8
-                    object.changePos(0, changeY)
-                    object.yVel = 0
-                    colliding = self.rect.colliderect(object.rect)
 
 class Map:
     def __init__(self, folder):
@@ -256,7 +329,7 @@ class Map:
 
     def loadObjects(self):
         tempObjects = self.objects
-        self.objects = []
+        self.objects, self.doors, self.buttons = [], [], []
         exit, secretexit = False, False
         for object in tempObjects:
             try:
@@ -303,6 +376,35 @@ class Map:
                         self.objects.append(Text(x, y, text.text, textSize))
                 case 'Checkpoint':
                     self.objects.append(Checkpoint(x, y))
+                case 'Button':
+                    findPropertyFail = True
+                    try:
+                        rotation = int(float(object.attrib['rotation']))
+                    except KeyError:
+                        rotation = 0
+                    try:
+                        if object.find("properties").find("property").attrib["name"] == 'Doors':
+                            findPropertyFail = False
+                    except TypeError, AttributeError:
+                        pass
+                    if findPropertyFail:
+                        print("Error: Failed to load button door list: No 'Doors' property")
+                        print(f'Object ID: {object.attrib['id']}')
+                        print("Give the button a custom property called 'Doors',")
+                        print("make it a list, and add all the doors that you")
+                        print("want to open with this button.")
+                        print("")
+                    else:
+                        doorIDs = []
+                        for door in object.find("properties").find("property"):
+                            doorIDs.append(int(door.attrib["value"]))
+                        tempButton = Button(x, y, rotation, doorIDs)
+                        #self.objects.append(tempButton)
+                        self.buttons.append(tempButton)
+                case 'Door':
+                    tempDoor = Door(x, y, object.attrib["id"])
+                    self.objects.append(tempDoor)
+                    self.doors.append(tempDoor)
                 case 'Spawn':
                     pass
                 case _:
@@ -445,7 +547,7 @@ class Player:
         self.rect = (x, y, self.rect[2], self.rect[3])
 
     def changePos(self, x, y):
-        self.rect = (self.rect[0] + x, self.rect[1] + y, self.rect[2], self.rect[3])
+        self.rect = (round(self.rect[0] + x, 2), round(self.rect[1] + y, 2), self.rect[2], self.rect[3])
 
     def debug_drawRect(self):
         global playerList
@@ -494,15 +596,13 @@ class Player:
             if len(playerList) == 1:
                 currentMap.mus.stop()
             for player in playerList:
+                player.lastCheckpoint = currentMap.spawnPos
                 player.reset()
                 player.timer = 0
                 player.winTimer = -1
                 player.score = 0
-                player.lastCheckpoint = currentMap.spawnPos
             allWon = False
             currentMap.mus.play()
-
-            
 
     def die(self, deathType):
         global playerList
@@ -617,7 +717,6 @@ class Player:
         self.changePos(self.xVel, 0)
 
 
-
         if self.deathType == '':
             if PLAYERCOLLISION == 1:
                 for player in playerList:
@@ -625,8 +724,15 @@ class Player:
                         self.playerCollide(player, 'x')
 
             nearbyTiles = self.getNearbyTiles()
+            for button in currentMap.buttons:
+                button.update(self)
+                collide(self, button.rect, 'x')
+                collide(self, button.rect_button, 'x')
+            for door in currentMap.doors:
+                if not door.unlocked:
+                    collide(self, door.rect, 'x')
             for tile in nearbyTiles:
-                tile.collide(self, 'x')
+                collide(self, tile.rect, 'x')
 
         self.yVel += self.grav/2
 
@@ -651,8 +757,19 @@ class Player:
                     self.playerCollide(player, 'y')
 
         nearbyTiles = self.getNearbyTiles()
+        for button in currentMap.buttons:
+            button.update(self)
+            if button.rotation != 0:
+                collide(self, button.rect, 'y')
+                collide(self, button.rect_button, 'y')
+            else:
+                collide(self, button.rect_button, 'y')
+                collide(self, button.rect, 'y')
+        for door in currentMap.doors:
+            if not door.unlocked:
+                collide(self, door.rect, 'y')
         for tile in nearbyTiles:
-            tile.collide(self, 'y')
+            collide(self, tile.rect, 'y')
 
         if self.coyoteTime > 0:
             self.coyoteTime -= 1
@@ -750,7 +867,7 @@ class Player:
                 playersWon, playersWon_rect = drawText(f'{winners}/{len(playerList)}')
 
                 waiting_rect.center = (WIDTH/2, HEIGHT/3)
-                playersWon_rect.center =(WIDTH/2, HEIGHT/7*3)
+                playersWon_rect.center = (WIDTH/2, HEIGHT/7*3)
 
                 self.camera.blit(waiting, waiting_rect)
                 self.camera.blit(playersWon, playersWon_rect)
@@ -862,6 +979,8 @@ class Player:
             self.deathType = 'fell'
         self.camera.fill((255, 255, 255))
         currentMap.update(self)
+        for button in currentMap.buttons:
+            button.update(self)
         if SHOWHITBOXES == 1:
             self.debug_drawRect()
         self.drawPlayer()
@@ -875,7 +994,7 @@ class Player:
 
 
 def getPlayerRect(player, offsets):
-    return (int(player.rect[0]-offsets[0]-player.spawnPoint[0]+(WIDTH/2-20)), int(player.rect[1]-offsets[1]-player.spawnPoint[1]-TILESIZE+(HEIGHT/2-20)), player.rect[2], player.rect[3])
+    return (round(player.rect[0]-offsets[0]-player.spawnPoint[0]+(WIDTH/2-20), 2), round(player.rect[1]-offsets[1]-player.spawnPoint[1]-TILESIZE+(HEIGHT/2-20), 2), player.rect[2], player.rect[3])
 
 def drawText(textStr, font=font):
     text = font.render(textStr, False, (255, 255, 255))
