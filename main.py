@@ -63,7 +63,7 @@ def collide(object, rect, direction):
 
         elif direction == 'y':
             colliding = rect.colliderect(object.rect)
-            if object.yVel < 0:
+            if object.yVel <= 0:
                 changeY = 0.1
             elif object.yVel > 0:
                 changeY = -0.1
@@ -229,16 +229,16 @@ class Door:
         self.rect = pygame.Rect(x, y, TILESIZE, TILESIZE)
         self.unlocked = False
         self.id = int(id)
+        self.image = pygame.Surface((TILESIZE, TILESIZE), pygame.SRCALPHA)
+        self.image.blit(img_obj, area=(TILESIZE*2, TILESIZE, TILESIZE, TILESIZE))
 
     def update(self, player):
-        if self.unlocked:
-            self.sprite = (0, 0, 0, 0)
-        else:
-            self.sprite = (TILESIZE*2, TILESIZE, TILESIZE, TILESIZE)
-        player.camera.blit(img_obj, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]), area=self.sprite)
+        if not self.unlocked:
+            player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]))
 
 class Button:
-    def __init__(self, x, y, rotation, doorIDs):
+    def __init__(self, x, y, rotation, doorIDs, color):
+        self.color = color
         y += TILESIZE
         self.pos = (x, y)
         self.imagePos = (x, y)
@@ -250,28 +250,37 @@ class Button:
             case 0:
                 x, y, w, h = 0, TILESIZE-5, TILESIZE, 5
                 x2, y2, w2, h2 = 6, TILESIZE-13, 28, 8
-                #x3, y3, w3, h3
+                x3, y3, w3, h3 = x2, y2+4, w2, h2-4
                 self.imagePos = (self.pos[0], self.pos[1]-5)
                 self.pos = (self.pos[0], self.pos[1]-TILESIZE)
             case 1:
                 x, y, w, h = 0, 0, 5, TILESIZE
                 x2, y2, w2, h2 = 5, 6, 8, 28
+                x3, y3, w3, h3 = x2, y2, w2-4, h2
                 self.imagePos = (self.pos[0], self.pos[1]+TILESIZE-5)
             case 2:
                 x, y, w, h = 0, 0, TILESIZE, 5
                 x2, y2, w2, h2 = 6, 5, 28, 8
+                x3, y3, w3, h3 = x2, y2, w2, h2-4
                 self.imagePos = (self.pos[0]-TILESIZE, self.pos[1]+TILESIZE-5)
                 self.pos = (self.pos[0]-TILESIZE, self.pos[1])
             case 3:
                 x, y, w, h = TILESIZE-5, 0, 5, TILESIZE
                 x2, y2, w2, h2 = TILESIZE-13, 6, 8, 28
+                x3, y3, w3, h3 = x2+4, y2, w2-4, h2
                 self.imagePos = (self.pos[0]-TILESIZE, self.pos[1]-5)
                 self.pos = (self.pos[0]-TILESIZE, self.pos[1]-TILESIZE)
 
+        self.image = pygame.Surface((TILESIZE, TILESIZE), pygame.SRCALPHA)
+
         self.rect = pygame.Rect(self.pos[0]+x, self.pos[1]+y, w, h)
         self.buttonrect = pygame.Rect(self.pos[0]+x2, self.pos[1]+y2, w2, h2)
-        self.image = pygame.Surface((TILESIZE, TILESIZE), pygame.SRCALPHA)
+        self.buttonrect_pressed = pygame.Rect(self.pos[0]+x3, self.pos[1]+y3, w3, h3)
+
         self.rect_button = self.buttonrect
+        self.real_buttonrect = pygame.Rect(self.buttonrect[0]-self.pos[0], self.buttonrect[1]-self.pos[1], self.buttonrect[2], self.buttonrect[3])
+        self.real_buttonrect_pressed = pygame.Rect(self.buttonrect_pressed[0]-self.pos[0], self.buttonrect_pressed[1]-self.pos[1], self.buttonrect_pressed[2], self.buttonrect_pressed[3])
+        self.real_rect_button = self.real_buttonrect
 
     def update(self, player):
         global currentMap
@@ -279,9 +288,13 @@ class Button:
             self.sprite = (0, TILESIZE, TILESIZE, TILESIZE)
             self.rect_button = self.buttonrect
         else:
+            self.image.fill((0,0,0,0))
             self.sprite = (TILESIZE, TILESIZE, TILESIZE, TILESIZE)
-        self.image.fill((0,0,0,0))
+            self.rect_button = self.buttonrect_pressed
+            self.real_rect_button = self.real_buttonrect_pressed
+
         self.image.blit(img_obj, area=self.sprite)
+        pygame.draw.rect(self.image, self.color, self.real_rect_button)
         self.image = pygame.transform.rotate(self.image, -self.rotation*90)
         if pygame.Rect(player.rect).colliderect(self.rect_button) and not self.pressed:
             self.pressed = True
@@ -377,32 +390,35 @@ class Map:
                 case 'Checkpoint':
                     self.objects.append(Checkpoint(x, y))
                 case 'Button':
-                    findPropertyFail = True
                     try:
                         rotation = int(float(object.attrib['rotation']))
                     except KeyError:
                         rotation = 0
+                    doored, colored = False, False
+                    fail = False
                     try:
-                        if object.find("properties").find("property").attrib["name"] == 'Doors':
-                            findPropertyFail = False
+                        for property in object.find("properties"):
+                            if property.attrib["name"] == 'Doors' and not doored:
+                                doorIDs = []
+                                for door in property:
+                                    doorIDs.append(int(door.attrib["value"]))
+                                doored = True
+                            if property.attrib["name"] == 'Color' and not colored:
+                                hexcode = property.attrib["value"].replace('#ff', '')
+                                rgb = tuple(int(hexcode[i:i+2], 16) for i in (0, 2, 4))
+                                colored = True
                     except TypeError, AttributeError:
-                        pass
-                    if findPropertyFail:
-                        print("Error: Failed to load button door list: No 'Doors' property")
+                        fail = True
+                        print("Error: Failed to load button door list: No 'Doors' or 'Color' property")
                         print(f'Object ID: {object.attrib['id']}')
-                        print("Give the button a custom property called 'Doors',")
-                        print("make it a list, and add all the doors that you")
-                        print("want to open with this button.")
+                        print("fix you're properties")
                         print("")
-                    else:
-                        doorIDs = []
-                        for door in object.find("properties").find("property"):
-                            doorIDs.append(int(door.attrib["value"]))
-                        tempButton = Button(x, y, rotation, doorIDs)
+                    if not fail:
+                        tempButton = Button(x, y, rotation, doorIDs, rgb)
                         #self.objects.append(tempButton)
                         self.buttons.append(tempButton)
                 case 'Door':
-                    tempDoor = Door(x, y, object.attrib["id"])
+                    tempDoor = Door(x, y, int(object.attrib["id"]))
                     self.objects.append(tempDoor)
                     self.doors.append(tempDoor)
                 case 'Spawn':
@@ -413,6 +429,13 @@ class Map:
                     print(f'Object Class: {object.attrib['type']}')
                     print("Set the 'Class' value of this object to a valid object type!")
                     print("")
+
+        for button in self.buttons:
+            for door in self.doors:
+                if door.id in button.connectedDoorIDs:
+                    door.color = button.color
+                    door.image.fill(door.color)
+                    door.image.blit(img_obj, area=(TILESIZE*2, TILESIZE, TILESIZE, TILESIZE))
 
 
     def parsetmx(self, folder):
