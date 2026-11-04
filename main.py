@@ -22,10 +22,10 @@ TILESIZE = 40
 FPS = 60
 FADE_O = 255 #opaque
 FADE_T = 0 #transparent
-PLAYERS = 2
+PLAYERS = 1
 MINUTE = 3600
 SHOWHITBOXES = 0
-PLAYERCOLLISION = 1
+PLAYERCOLLISION = 0
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
@@ -44,12 +44,16 @@ def ease(t):
     return 1 - ((1 - t) ** 3)
 
 def collide(object, rect, direction):
+    global currentMap
     doCollide = True
     if isinstance(object, Player):
         if object.deathType != '':
             doCollide = False
     if doCollide:
         if direction == 'x':
+            if int(object.rect[1]+object.rect[3]-rect[1]) <= 10 and rect[3] <= 10:
+                direction = 'y'
+                return
             colliding = rect.colliderect(object.rect)
             if object.xVel < 0:
                 changeX = 0.1
@@ -61,9 +65,10 @@ def collide(object, rect, direction):
                 object.xVel = 0
                 colliding = rect.colliderect(object.rect)
 
-        elif direction == 'y':
+        if direction == 'y':
             colliding = rect.colliderect(object.rect)
-            if object.yVel < 0:
+            collided = 0
+            if object.yVel <= 0:
                 changeY = 0.1
             elif object.yVel > 0:
                 changeY = -0.1
@@ -75,6 +80,11 @@ def collide(object, rect, direction):
                 object.changePos(0, changeY)
                 object.yVel = 0
                 colliding = rect.colliderect(object.rect)
+                collided += 1
+            if int(object.rect[1]+object.rect[3]-rect[1]) <= 10 and rect[3] <= 10 and isinstance(object, Player) and collided >= 1:
+                if object.cameraPos[1] <= 0 or object.cameraPos[1] >= -(len(currentMap.map))*TILESIZE+HEIGHT:
+                    object.cameraPos = (object.cameraPos[0], object.cameraPos[1]-(object.rect[1]-object.prevPos[1]))
+                    object.offsetY += (object.rect[1]-object.prevPos[1])
 
 #objects
 class Spring:
@@ -155,7 +165,7 @@ class Goal:
             player.win(self.type)
 
     def update(self, player):
-        player.camera.blit(img_flag, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]+1), area=(self.sprite[0], self.frame*(TILESIZE*1.5), self.sprite[2], self.sprite[3]))
+        player.camera.blit(img_flag, dest=(int(player.cameraPos[0])+self.pos[0], int(player.cameraPos[1])+self.pos[1]), area=(self.sprite[0], self.frame*(TILESIZE*1.5), self.sprite[2], self.sprite[3]))
         self.collide(player)
         self.anim += 1
         if self.anim > 59:
@@ -206,7 +216,7 @@ class Text:
     def update(self, player):
         global playerList
         if len(playerList) == 1:
-            player.camera.blit(self.text, dest=(int(player.cameraPos[0]+self.text_rect[0]), int(player.cameraPos[1]+self.text_rect[1]) ))
+            player.camera.blit(self.text, dest=(int(player.cameraPos[0])+self.text_rect[0], int(player.cameraPos[1])+self.text_rect[1] ))
 
 class Checkpoint:
     def __init__(self, x, y):
@@ -231,11 +241,17 @@ class Door:
         self.unlocked = False
         self.id = int(id)
         self.image = pygame.Surface((TILESIZE, TILESIZE), pygame.SRCALPHA)
-        self.image.blit(img_obj, area=(TILESIZE*2, TILESIZE, TILESIZE, TILESIZE))
 
     def update(self, player):
         if not self.unlocked:
-            player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]))
+            self.image.fill(self.color)
+            self.sprite = (TILESIZE*2, TILESIZE, TILESIZE, TILESIZE)
+        else:
+            self.image.fill((0,0,0,0))
+            self.sprite = (TILESIZE*3, TILESIZE, TILESIZE, TILESIZE)
+        self.image.blit(img_obj, area=self.sprite)
+        self.image.fill(self.color, special_flags=pygame.BLEND_RGB_MULT)
+        player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]))
 
 class Button:
     def __init__(self, x, y, rotation, doorIDs, color):
@@ -279,34 +295,61 @@ class Button:
         self.buttonrect_pressed = pygame.Rect(self.pos[0]+x3, self.pos[1]+y3, w3, h3)
 
         self.rect_button = self.buttonrect
-        self.real_buttonrect = pygame.Rect(self.buttonrect[0]-self.pos[0], self.buttonrect[1]-self.pos[1], self.buttonrect[2], self.buttonrect[3])
-        self.real_buttonrect_pressed = pygame.Rect(self.buttonrect_pressed[0]-self.pos[0], self.buttonrect_pressed[1]-self.pos[1], self.buttonrect_pressed[2], self.buttonrect_pressed[3])
-        self.real_rect_button = self.real_buttonrect
+        self.sprite_buttonrect = pygame.Rect(self.buttonrect[0]-self.pos[0], self.buttonrect[1]-self.pos[1], self.buttonrect[2], self.buttonrect[3])
+        self.sprite_buttonrect_pressed = pygame.Rect(self.buttonrect_pressed[0]-self.pos[0], self.buttonrect_pressed[1]-self.pos[1], self.buttonrect_pressed[2], self.buttonrect_pressed[3])
+        self.sprite_rect_button = self.sprite_buttonrect
+
+        x, y, w, h = 0, 0, 0, 0
+
+        match self.rotation:
+            case 0:
+                y, h = -1, 1
+            case 1:
+                x, w, = 0, 1
+            case 2:
+                y, h = 1, -1
+            case 3:
+                x, w, = -1, 1
+        self.press_buttonrect = pygame.Rect(self.buttonrect[0]+x, self.buttonrect[1]+y, self.buttonrect[2]+w, self.buttonrect[3]+h)
+
+        self.pressing = False
 
     def update(self, player):
         global currentMap
         if not self.pressed:
             self.sprite = (0, TILESIZE, TILESIZE, TILESIZE)
             self.rect_button = self.buttonrect
+            self.sprite_rect_button = self.sprite_buttonrect
         else:
             self.sprite = (TILESIZE, TILESIZE, TILESIZE, TILESIZE)
             self.rect_button = self.buttonrect_pressed
-            self.real_rect_button = self.real_buttonrect_pressed
+            self.sprite_rect_button = self.sprite_buttonrect_pressed
 
         self.image.fill((0,0,0,0))
         self.image.blit(img_obj, area=self.sprite)
+        self.image.fill(self.color, special_flags=pygame.BLEND_RGB_MULT)
+        self.image.blit(img_obj, area=(TILESIZE*4, TILESIZE, TILESIZE, TILESIZE))
         self.image = pygame.transform.rotate(self.image, -self.rotation*90)
-        pygame.draw.rect(self.image, self.color, self.real_rect_button)
-        if pygame.Rect(player.rect).colliderect(self.rect_button) and not self.pressed:
-            self.pressed = True
-            for door in currentMap.doors:
-                if door.id in self.connectedDoorIDs:
-                    door.unlocked = True
+        if pygame.Rect(player.rect).colliderect(self.press_buttonrect):
+            if not self.pressing:
+                self.pressing = True
+                self.pressed = True
+
+                for door in currentMap.doors:
+                    if door.id in self.connectedDoorIDs:
+                        if not door.unlocked:
+                            door.unlocked = True
+                        else:
+                            door.unlocked = False
+        else:
+            self.pressing = False
+            self.pressed = False
 
         player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.imagePos[0], int(player.cameraPos[1])+self.imagePos[1]-TILESIZE+5))
         if SHOWHITBOXES == 1:
             pygame.draw.rect(player.camera, (0, 0, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
             pygame.draw.rect(player.camera, (0, 255, 255), (int(player.cameraPos[0])+self.buttonrect[0], int(player.cameraPos[1])+self.buttonrect[1], self.buttonrect[2], self.buttonrect[3]))
+            pygame.draw.rect(player.camera, (255, 0, 255), (int(player.cameraPos[0])+self.press_buttonrect[0], int(player.cameraPos[1])+self.press_buttonrect[1], self.press_buttonrect[2], self.press_buttonrect[3]))
 
 #not objects
 class Tile:
@@ -346,9 +389,12 @@ class Map:
         self.objects, self.doors, self.buttons = [], [], []
         exit, secretexit = False, False
         for object in tempObjects:
+            t = False
+            x, y = float(object.attrib['x']), float(object.attrib['y'])-TILESIZE
             try:
-                x, y, type = float(object.attrib['x']), float(object.attrib['y'])-TILESIZE, int(object.attrib['gid'])
+                type =  int(object.attrib['gid'])
             except KeyError:
+                t = True
                 text = object.find("text")
                 if text.text == None:
                     print("Error: Failed to load text object: No text specified")
@@ -363,80 +409,75 @@ class Map:
                         textSize = 16
                     self.objects.append(Text(float(object.attrib['x']), float(object.attrib['y'])-TILESIZE, text.text, textSize))
                 
-            match type:
-                case 29:
-                    try:
-                        rotation = int(float(object.attrib['rotation']))
-                    except KeyError:
-                        rotation = 0
-                    self.objects.append(Spring(x, y, rotation))
-                case 26:
-                    if not exit:
-                        self.objects.append(Goal(x, y, 'normal'))
-                        exit == True
-                case 27:
-                    if not secretexit:
-                        self.objects.append(Goal(x, y, 'secret'))
-                        secretexit == True
-                case 30:
-                    try:
-                        rotation = int(float(object.attrib['rotation']))
-                    except KeyError:
-                        rotation = 0
-                    self.objects.append(Spike(x, y, rotation))
-                case 31:
-                    self.objects.append(Checkpoint(x, y))
-                case 32:
-                    try:
-                        rotation = int(float(object.attrib['rotation']))
-                    except KeyError:
-                        rotation = 0
-                    doored, colored = False, False
-                    fail = False
-                    try:
-                        for property in object.find("properties"):
-                            if property.attrib["name"] == 'Doors' and not doored:
-                                doorIDs = []
-                                for door in property:
-                                    doorIDs.append(int(door.attrib["value"]))
-                                doored = True
-                            if property.attrib["name"] == 'Color' and not colored:
-                                hexcode = property.attrib["value"].replace('#ff', '')
-                                rgb = tuple(int(hexcode[i:i+2], 16) for i in (0, 2, 4))
-                                colored = True
-                    except TypeError, AttributeError:
-                        fail = True
-                        print("Error: Failed to load button door list: No 'Doors' or 'Color' property")
+
+            if not t:
+                match type:
+                    case 29:
+                        try:
+                            rotation = int(float(object.attrib['rotation']))
+                        except KeyError:
+                            rotation = 0
+                        self.objects.append(Spring(x, y, rotation))
+                    case 26:
+                        if not exit:
+                            self.objects.append(Goal(x, y, 'normal'))
+                            exit == True
+                    case 27:
+                        if not secretexit:
+                            self.objects.append(Goal(x, y, 'secret'))
+                            secretexit == True
+                    case 30:
+                        try:
+                            rotation = int(float(object.attrib['rotation']))
+                        except KeyError:
+                            rotation = 0
+                        self.objects.append(Spike(x, y, rotation))
+                    case 31:
+                        self.objects.append(Checkpoint(x, y))
+                    case 32:
+                        try:
+                            rotation = int(float(object.attrib['rotation']))
+                        except KeyError:
+                            rotation = 0
+                        doored, colored = False, False
+                        fail = False
+                        try:
+                            for property in object.find("properties"):
+                                if property.attrib["name"] == 'Doors' and not doored:
+                                    doorIDs = []
+                                    for door in property:
+                                        doorIDs.append(int(door.attrib["value"]))
+                                    doored = True
+                                if property.attrib["name"] == 'Color' and not colored:
+                                    hexcode = property.attrib["value"].replace('#ff', '')
+                                    rgb = tuple(int(hexcode[i:i+2], 16) for i in (0, 2, 4))
+                                    colored = True
+                        except TypeError, AttributeError:
+                            fail = True
+                            print("Error: Failed to load button door list: No 'Doors' or 'Color' property")
+                            print(f'Object ID: {object.attrib['id']}')
+                            print("fix you're properties")
+                            print("")
+                        if not fail:
+                            tempButton = Button(x, y, rotation, doorIDs, rgb)
+                            #self.objects.append(tempButton)
+                            self.buttons.append(tempButton)
+                    case 33:
+                        tempDoor = Door(x, y, int(object.attrib["id"]))
+                        self.objects.append(tempDoor)
+                        self.doors.append(tempDoor)
+                    case 34:
+                        tempDoor = Door(x, y, int(object.attrib["id"]))
+                        tempDoor.unlocked = True
+                        self.objects.append(tempDoor)
+                        self.doors.append(tempDoor)
+                    case 28:
+                        pass
+                    case _:
+                        print("Error: Failed to load object: Unknown object type")
                         print(f'Object ID: {object.attrib['id']}')
-                        print("fix you're properties")
+                        print("Set the 'Class' value of this object to a valid object type!")
                         print("")
-                    if not fail:
-                        tempButton = Button(x, y, rotation, doorIDs, rgb)
-                        #self.objects.append(tempButton)
-                        self.buttons.append(tempButton)
-                case 33:
-                    try:
-                        for property in object.find("properties"):
-                            if property.attrib["name"] == "Unlocked":
-                                unlocked = property.attrib["value"]
-                                if unlocked == "true":
-                                    unlocked = True
-                                elif unlocked == "false":
-                                    unlocked = False
-                    except KeyError:
-                        unlocked = False
-                    tempDoor = Door(x, y, int(object.attrib["id"]))
-                    tempDoor.unlocked = unlocked
-                    self.objects.append(tempDoor)
-                    self.doors.append(tempDoor)
-                case 28:
-                    pass
-                case _:
-                    print("Error: Failed to load object: Unknown object type")
-                    print(f'Object ID: {object.attrib['id']}')
-                    print(f'Object Class: {object.attrib['type']}')
-                    print("Set the 'Class' value of this object to a valid object type!")
-                    print("")
 
         for button in self.buttons:
             for door in self.doors:
@@ -444,6 +485,15 @@ class Map:
                     door.color = button.color
                     door.image.fill(door.color)
                     door.image.blit(img_obj, area=(TILESIZE*2, TILESIZE, TILESIZE, TILESIZE))
+        for door in self.doors:
+            try:
+                if door.color != None:
+                    pass
+            except AttributeError:
+                print("Error: Failed to set door color: No connected buttons")
+                print(f'Object ID: {object.attrib['id']}')
+                print("Connect a button to this door!")
+                door.color = (255, 255, 255)
 
 
     def parsetmx(self, folder):
@@ -560,6 +610,7 @@ class Player:
         self.offsetY = 0
         self.spawnPoint = self.lastCheckpoint
         self.rect = pygame.Rect(self.lastCheckpoint[0], self.lastCheckpoint[1], int(self.size*0.6), int(self.size*0.75))
+        self.prevPos = self.rect
         self.cameraPos = (-self.rect[0]+(WIDTH/2-20), -self.rect[1]-TILESIZE+(HEIGHT/2-20))
         self.xVel = 0
         self.yVel = 0
@@ -748,7 +799,6 @@ class Player:
             self.xVel = 0
         self.changePos(self.xVel, 0)
 
-
         if self.deathType == '':
             if PLAYERCOLLISION == 1:
                 for player in playerList:
@@ -757,13 +807,14 @@ class Player:
 
             nearbyTiles = self.getNearbyTiles()
             for button in currentMap.buttons:
-                button.update(self)
                 if (button.rotation == 1 and self.xVel < 0) or (button.rotation == 3 and self.xVel > 0):
                     collide(self, button.rect_button, 'x')
                     collide(self, button.rect, 'x')
                 else:
                     collide(self, button.rect, 'x')
+                    # bug is on the linea fter this
                     collide(self, button.rect_button, 'x')
+                #button.update(self)
             for door in currentMap.doors:
                 if not door.unlocked:
                     collide(self, door.rect, 'x')
@@ -794,13 +845,13 @@ class Player:
 
         nearbyTiles = self.getNearbyTiles()
         for button in currentMap.buttons:
-            button.update(self)
             if button.rotation != 0:
                 collide(self, button.rect, 'y')
                 collide(self, button.rect_button, 'y')
             else:
                 collide(self, button.rect_button, 'y')
                 collide(self, button.rect, 'y')
+            #button.update(self)
         for door in currentMap.doors:
             if not door.unlocked:
                 collide(self, door.rect, 'y')
@@ -818,12 +869,12 @@ class Player:
         bottomCameraBorder = self.rect[1]+self.size > HEIGHT*0.4-self.cameraPos[1] and self.yVel > 0.75 and self.cameraPos[1] > -(len(currentMap.map))*TILESIZE+HEIGHT
 
         if leftCameraBorder or rightCameraBorder:
-            self.cameraPos = (self.cameraPos[0]-self.xVel, self.cameraPos[1])
-            self.offsetX += self.xVel
+            self.cameraPos = (self.cameraPos[0]-(self.rect[0]-self.prevPos[0]), self.cameraPos[1])
+            self.offsetX += (self.rect[0]-self.prevPos[0])
 
         if topCameraBorder or bottomCameraBorder:
-            self.cameraPos = (self.cameraPos[0], self.cameraPos[1]-self.yVel)
-            self.offsetY += self.yVel
+            self.cameraPos = (self.cameraPos[0], self.cameraPos[1]-(self.rect[1]-self.prevPos[1]))
+            self.offsetY += (self.rect[1]-self.prevPos[1])
 
         if self.cameraPos[0] > 0:
             self.offsetX += self.cameraPos[0]
@@ -1023,6 +1074,8 @@ class Player:
         if SHOWHITBOXES == 1:
             self.debug_drawRect()
         self.drawPlayer()
+
+        self.prevPos = self.rect
 
         if not self.won and self.deathType == '':
             self.timer += 1
