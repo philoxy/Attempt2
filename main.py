@@ -599,6 +599,7 @@ class Player:
         self.anim = 0
         self.frame = 0
         self.spritesheet = loadimg(f'assets/players/{char}.png')
+        self.coins = 0
 
     def reset(self):
         global currentMap
@@ -684,6 +685,7 @@ class Player:
                 player.timer = 0
                 player.winTimer = -1
                 player.score = 0
+                player.coins = 0
             allWon = False
             currentMap.mus.play()
 
@@ -936,11 +938,15 @@ class Player:
 
             score, score_rect = drawText(f'Score: {self.score}')
 
+            #coins, coins_rect = drawText(f'CDs: {self.coins}')
+
             timer_rect.topleft = (10, 10)
             score_rect.topright = (WIDTH-10, 10)
+            #coins_rect.topleft = (10, 40)
 
             self.camera.blit(timer, timer_rect)
             self.camera.blit(score, score_rect)
+            #self.camera.blit(coins, coins_rect)
         else:
             self.camera.blit(self.fadeLayer)
             allWon = True
@@ -992,9 +998,12 @@ class Player:
                     if self.won == 'secret':
                         tempScore -= 1000
 
-                    for exponent in range(5):
-                        if abs(int(tempScore)) < 10^(exponent+1):
+                    tempScore = str(tempScore)
+
+                    for um in range(5):
+                        if len(tempScore) < 6:
                             tempScore = f'0{tempScore}'
+
 
                     score, score_rect = drawText(f'Score: {tempScore}', font_m)
 
@@ -1013,10 +1022,11 @@ class Player:
                         self.camera.blit(timeBonus, timeBonus_rect)
 
                 if self.winTimer <= 60:
+                    tempScore = str(self.score)
                     for exponent in range(5):
-                        if abs(int(self.score)) < 10^(exponent+1):
-                            self.score = f'0{self.score}'
-                    finalScore, finalScore_rect = drawText(f'Final Score: {self.score}', font_l)  
+                        if len(tempScore) < 6:
+                            tempScore = f'0{tempScore}'
+                    finalScore, finalScore_rect = drawText(f'Final Score: {tempScore}', font_l)  
                     finalScore_rect.center = (WIDTH/2, HEIGHT/14*11)
                     self.camera.blit(finalScore, finalScore_rect)              
 
