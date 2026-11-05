@@ -26,6 +26,7 @@ PLAYERS = 1
 MINUTE = 3600
 SHOWHITBOXES = 0
 PLAYERCOLLISION = 0
+CLEARMUS = 0
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
@@ -34,11 +35,23 @@ img_obj = loadimg('assets/objects.png')
 img_flag = loadimg('assets/flags.png')
 img_rock = loadimg('assets/tilesets/rock.png')
 #img_grass = loadimg('assets/tilesets/blugrass.png')
+img_coin = loadimg('assets/collectables.png')
 
 snd_spring = pygame.mixer.Sound('assets/sfx/spring.mp3')
 snd_die = pygame.mixer.Sound('assets/sfx/death.mp3')
 snd_fall = pygame.mixer.Sound('assets/sfx/fall.mp3')
 snd_win = pygame.mixer.Sound('assets/sfx/tada.mp3')
+snd_tally = pygame.mixer.Sound('assets/sfx/scoreadd.mp3')
+snd_register = pygame.mixer.Sound('assets/sfx/scoretotal.mp3')
+snd_button = pygame.mixer.Sound('assets/sfx/button.mp3')
+snd_twinkle = pygame.mixer.Sound('assets/sfx/twinkle.mp3')
+
+snd_twinkle.set_volume(0.8)
+snd_die.set_volume(0.8)
+snd_register.set_volume(0.8)
+
+if CLEARMUS:
+    mus_clear = pygame.mixer.Sound('assets/mus/clear.mp3')
 
 def ease(t):
     return 1 - ((1 - t) ** 3)
@@ -55,10 +68,13 @@ def collide(object, rect, direction):
                 direction = 'y'
                 return
             colliding = rect.colliderect(object.rect)
-            if object.xVel < 0:
+            if (object.rect[0]-object.prevPos[0]) <= 0:
                 changeX = 0.1
-            elif object.xVel > 0:
+            elif (object.rect[0]-object.prevPos[0]) > 0:
                 changeX = -0.1
+
+            if colliding:
+                object.prevPos = object.rect
 
             while colliding:
                 object.changePos(changeX, 0)
@@ -68,10 +84,11 @@ def collide(object, rect, direction):
         if direction == 'y':
             colliding = rect.colliderect(object.rect)
             collided = 0
-            if object.yVel <= 0:
+            if (object.rect[1]-object.prevPos[1]) < 0:
                 changeY = 0.1
-            elif object.yVel > 0:
+            elif (object.rect[1]-object.prevPos[1]) >= 0:
                 changeY = -0.1
+
             while colliding:
                 if isinstance(object, Player):
                     if changeY == -0.1:
@@ -147,6 +164,8 @@ class Spring:
         if player != None:
             player.camera.blit(self.image, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]))
             self.collide(player)
+        if SHOWHITBOXES:
+            pygame.draw.rect(player.camera, (255, 0, 0), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
         
 class Goal:
     def __init__(self, x, y, type):
@@ -171,6 +190,8 @@ class Goal:
         if self.anim > 59:
             self.anim = 0
         self.frame = math.floor(self.anim/20)
+        if SHOWHITBOXES:
+            pygame.draw.rect(player.camera, (0, 0, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
 
 class Spike:
     def __init__(self, x, y, rotation):
@@ -202,7 +223,7 @@ class Spike:
 
     def update(self, player):
         player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.pos[0], int(player.cameraPos[1])+self.pos[1]))
-        if SHOWHITBOXES == 1:
+        if SHOWHITBOXES:
             pygame.draw.rect(player.camera, (255, 255, 0), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
 
         self.collide(player)
@@ -232,7 +253,7 @@ class Checkpoint:
         else:
             self.sprite = (120, 0, 40, 40)
         player.camera.blit(img_obj, dest=(int(player.cameraPos[0]+self.rect[0]), int(player.cameraPos[1]+self.rect[1]+math.sin(player.timer/20)*4-4)), area=self.sprite)
-        if SHOWHITBOXES == 1:
+        if SHOWHITBOXES:
             pygame.draw.rect(player.camera, (0, 255, 0), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
 
 class Door:
@@ -294,7 +315,7 @@ class Button:
         self.buttonrect = pygame.Rect(self.pos[0]+x2, self.pos[1]+y2, w2, h2)
         self.buttonrect_pressed = pygame.Rect(self.pos[0]+x3, self.pos[1]+y3, w3, h3)
 
-        self.rect_button = self.buttonrect
+        self.rect_button = self.buttonrect_pressed
         self.sprite_buttonrect = pygame.Rect(self.buttonrect[0]-self.pos[0], self.buttonrect[1]-self.pos[1], self.buttonrect[2], self.buttonrect[3])
         self.sprite_buttonrect_pressed = pygame.Rect(self.buttonrect_pressed[0]-self.pos[0], self.buttonrect_pressed[1]-self.pos[1], self.buttonrect_pressed[2], self.buttonrect_pressed[3])
         self.sprite_rect_button = self.sprite_buttonrect
@@ -307,7 +328,7 @@ class Button:
             case 1:
                 x, w, = 0, 1
             case 2:
-                y, h = 1, -1
+                y, h = 0, 1
             case 3:
                 x, w, = -1, 1
         self.press_buttonrect = pygame.Rect(self.buttonrect[0]+x, self.buttonrect[1]+y, self.buttonrect[2]+w, self.buttonrect[3]+h)
@@ -318,7 +339,7 @@ class Button:
         global currentMap
         if not self.pressed:
             self.sprite = (0, TILESIZE, TILESIZE, TILESIZE)
-            self.rect_button = self.buttonrect
+            #self.rect_button = self.buttonrect
             self.sprite_rect_button = self.sprite_buttonrect
         else:
             self.sprite = (TILESIZE, TILESIZE, TILESIZE, TILESIZE)
@@ -335,6 +356,8 @@ class Button:
                 self.pressing = True
                 self.pressed = True
 
+                snd_button.play()
+
                 for door in currentMap.doors:
                     if door.id in self.connectedDoorIDs:
                         if not door.unlocked:
@@ -346,10 +369,45 @@ class Button:
             self.pressed = False
 
         player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.imagePos[0], int(player.cameraPos[1])+self.imagePos[1]-TILESIZE+5))
-        if SHOWHITBOXES == 1:
+        if SHOWHITBOXES:
             pygame.draw.rect(player.camera, (0, 0, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
             pygame.draw.rect(player.camera, (0, 255, 255), (int(player.cameraPos[0])+self.buttonrect[0], int(player.cameraPos[1])+self.buttonrect[1], self.buttonrect[2], self.buttonrect[3]))
             pygame.draw.rect(player.camera, (255, 0, 255), (int(player.cameraPos[0])+self.press_buttonrect[0], int(player.cameraPos[1])+self.press_buttonrect[1], self.press_buttonrect[2], self.press_buttonrect[3]))
+
+class Collectable:
+    def __init__(self, x, y):
+        self.rect = pygame.Rect(x+5, y+5, 30, 30)
+        self.got = False
+        self.gotTimer = -1
+        self.anim = 0
+        self.frame = 0
+        self.image = pygame.Surface((30, 30), pygame.SRCALPHA)
+
+    def update(self, player):
+        self.anim += 1
+        if self.anim > 169:
+            self.anim = 0
+        self.frame = math.floor(self.anim/20)
+        if self.gotTimer == -1:
+            self.sprite = (-(self.frame%4*30), 0, 30, 30)
+        elif self.gotTimer > 0:
+            self.gotTimer -= 1
+            self.sprite = (-130, 0, 30, 30)
+            if self.gotTimer == 0:
+                self.got = True
+        self.image.fill((0,0,0,0))
+        self.image.blit(img_coin, self.sprite)
+        if 4 <= self.frame <= 7 and self.gotTimer == 0:
+            self.image = pygame.transform.flip(self.image, True, False)
+        if self.rect.colliderect(pygame.Rect(player.rect)) and self.gotTimer == -1:
+            snd_twinkle.play()
+            player.coins += 1
+            self.gotTimer = 7
+        if not(self.gotTimer == 0):
+            player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]))
+        if SHOWHITBOXES:
+            pygame.draw.rect(player.camera, (200, 200, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
+            
 
 #not objects
 class Tile:
@@ -386,7 +444,7 @@ class Map:
 
     def loadObjects(self):
         tempObjects = self.objects
-        self.objects, self.doors, self.buttons = [], [], []
+        self.objects, self.doors, self.buttons, self.coins = [], [], [], []
         exit, secretexit = False, False
         for object in tempObjects:
             t = False
@@ -398,7 +456,7 @@ class Map:
                 text = object.find("text")
                 if text.text == None:
                     print("Error: Failed to load text object: No text specified")
-                    print(f'Object ID: {object.attrib['id']}')
+                    print(f'Object ID: {object.attrib['gid']}')
                     print("Please specify a text value!")
                     print("Ignoring object...")
                     print("")
@@ -455,12 +513,11 @@ class Map:
                         except TypeError, AttributeError:
                             fail = True
                             print("Error: Failed to load button door list: No 'Doors' or 'Color' property")
-                            print(f'Object ID: {object.attrib['id']}')
+                            print(f'Object ID: {object.attrib['gid']}')
                             print("fix you're properties")
                             print("")
                         if not fail:
                             tempButton = Button(x, y, rotation, doorIDs, rgb)
-                            #self.objects.append(tempButton)
                             self.buttons.append(tempButton)
                     case 33:
                         tempDoor = Door(x, y, int(object.attrib["id"]))
@@ -471,12 +528,13 @@ class Map:
                         tempDoor.unlocked = True
                         self.objects.append(tempDoor)
                         self.doors.append(tempDoor)
+                    case 35:
+                        self.coins.append(Collectable(x, y))
                     case 28:
                         pass
                     case _:
                         print("Error: Failed to load object: Unknown object type")
-                        print(f'Object ID: {object.attrib['id']}')
-                        print("Set the 'Class' value of this object to a valid object type!")
+                        print(f'Object ID: {object.attrib['gid']}')
                         print("")
 
         for button in self.buttons:
@@ -491,7 +549,7 @@ class Map:
                     pass
             except AttributeError:
                 print("Error: Failed to set door color: No connected buttons")
-                print(f'Object ID: {object.attrib['id']}')
+                print(f'Object ID: {object.attrib['gid']}')
                 print("Connect a button to this door!")
                 door.color = (255, 255, 255)
 
@@ -569,6 +627,8 @@ class Map:
         player.camera.blit(self.mapsurf, dest=player.cameraPos)
         for object in self.objects:
             object.update(player)
+        for coin in self.coins:
+            coin.update(player)
         if self.musPopupTimer < 210 and PLAYERS == 1:
             self.musPopupTimer += 1
             if self.musPopupTimer <= 30:
@@ -576,8 +636,6 @@ class Map:
             elif self.musPopupTimer >= 180:
                 self.musPopupPos = ((self.musPopupTimer-150)/30-1)*-self.musPopup.get_width()
             player.camera.blit(self.musPopup, (self.musPopupPos, HEIGHT-40))
-
-
 
 class Player:
     def __init__(self, controls, char):
@@ -626,6 +684,10 @@ class Player:
         self.facing = 1
         self.dead = False
         self.deathType = ''
+        self.scoreBonuses = [0, 0, 0] #time, collectables, secret exit (why did i include secret exit)
+        for coin in currentMap.coins:
+            coin.got, coin.gotTimer = False, -1
+        self.coins = 0
 
     def setPos(self, x, y):
         self.rect = (x, y, self.rect[2], self.rect[3])
@@ -649,45 +711,43 @@ class Player:
             self.setFadeVars(100, 100)
             self.score = int(self.score)
             if self.timer < MINUTE/2:
-                self.score += 5000
+                self.scoreBonuses[0] = 5000
             elif self.timer < 1*MINUTE:
-                self.score += 3000
+                self.scoreBonuses[0] = 3000
             elif self.timer < 2*MINUTE:
-                self.score += 1000
+                self.scoreBonuses[0] = 1000
             elif self.timer < 3*MINUTE:
-                self.score += 500
+                self.scoreBonuses[0] = 500
             elif self.timer < 5*MINUTE:
-                self.score += 100
+                self.scoreBonuses[0] = 100
+            self.scoreBonuses[2] = self.coins*100
             self.won = exitType
             if self.won == 'secret':
-                self.score += 1000
+                self.scoreBonuses[1] = 1000
+            
         allWon = True
         for player in playerList:
             if player.won == False:
                 allWon = False
         if allWon and self.winTimer == -1:
+            self.winTimer = 1
             currentMap.mus.stop()
-            snd_win.play()
-            for player in playerList:
-                player.winTimer = 300
-        if self.winTimer != 0 and self.winTimer != -1:
-            self.winTimer -= 1
-        if checkKeypress([pygame.K_RETURN])[0] and allWon:
-            for player in playerList:
-                player.setFadeVars(100, FADE_O)
-                player.winTimer = -2
-        if self.winTimer == -30:
-            if len(playerList) == 1:
-                currentMap.mus.stop()
-            for player in playerList:
-                player.lastCheckpoint = currentMap.spawnPos
-                player.reset()
-                player.timer = 0
-                player.winTimer = -1
-                player.score = 0
-                player.coins = 0
-            allWon = False
+            if CLEARMUS:
+                mus_clear.play()
+            else:
+                snd_win.play()
+        if self.winTimer > 0:
+            self.winTimer += 1
+        if self.winTimer > 120 and not any(self.scoreBonuses) and self.fadeTime > 2:
             currentMap.mus.play()
+            for player in playerList:
+                player.lastCheckpoint = (currentMap.spawnPos[0], currentMap.spawnPos[1]-TILESIZE)
+                player.score = 0
+                player.timer = 0
+                player.checkpoint = None
+                player.reset()
+                player.setFadeVars(FADE_O, FADE_T)
+            
 
     def die(self, deathType):
         global playerList
@@ -728,6 +788,7 @@ class Player:
     def fade(self):
         self.fadeLayer.set_alpha(pygame.math.lerp(self.fadeStart, self.fadeEnd, ease(self.fadeTime)))
         self.fadeTime += 1/FPS*2
+        self.fadeTime = round(self.fadeTime, 2)
 
     def playerCollide(self, player, axis):
         if axis == 'x':
@@ -814,7 +875,6 @@ class Player:
                     collide(self, button.rect, 'x')
                 else:
                     collide(self, button.rect, 'x')
-                    # bug is on the linea fter this
                     collide(self, button.rect_button, 'x')
                 #button.update(self)
             for door in currentMap.doors:
@@ -929,24 +989,21 @@ class Player:
     def drawUI(self):
         global playerList
         if not self.won:
-            self.camera.blit(self.fadeLayer)
             timer, timer_rect = drawText(f'Time: {self.getTime()}')
             self.score = int(self.score)
-            for exponent in range(5):
-                if abs(int(self.score)) < 10^(exponent+1):
-                    self.score = f'0{self.score}'
 
             score, score_rect = drawText(f'Score: {self.score}')
 
-            #coins, coins_rect = drawText(f'CDs: {self.coins}')
+            coins, coins_rect = drawText(f'CDs: {self.coins}')
 
             timer_rect.topleft = (10, 10)
             score_rect.topright = (WIDTH-10, 10)
-            #coins_rect.topleft = (10, 40)
+            coins_rect.topleft = (10, 40)
 
             self.camera.blit(timer, timer_rect)
             self.camera.blit(score, score_rect)
-            #self.camera.blit(coins, coins_rect)
+            self.camera.blit(coins, coins_rect)
+            self.camera.blit(self.fadeLayer)
         else:
             self.camera.blit(self.fadeLayer)
             allWon = True
@@ -966,75 +1023,58 @@ class Player:
                 self.camera.blit(playersWon, playersWon_rect)
 
             else:
-                if self.winTimer >= 0:
-                    self.camera.blit(self.fadeLayer)
+                if CLEARMUS:
+                    delay1, delay2, delay3 = 55, 110, 270
+                else:
+                    delay1, delay2, delay3 = 40, 50, 120
+                self.camera.blit(self.fadeLayer)
                 youwin, youwin_rect = drawText('You Won!', font=font_l)
-                youwin_rect.center = (WIDTH/2, HEIGHT/4)
+                youwin_rect.center = (WIDTH/2, pygame.math.lerp(-200, HEIGHT/8, ease(self.winTimer/30)))
                 self.camera.blit(youwin, youwin_rect)
 
-                if self.winTimer <= 240:
-                    finalTime, finalTime_rect = drawText(f'Final Time: {self.getTime()}', font_m)
-                    finalTime_rect.center = (WIDTH/2, HEIGHT/7*3)
-                    self.camera.blit(finalTime, finalTime_rect)
+                finalTime, finalTime_rect = drawText(f'Final Time: {self.getTime()}', font_m)
+                finalTime_rect.center = (pygame.math.lerp(-200, WIDTH/2, (self.winTimer-delay1)/30), HEIGHT*2/8)
+                self.camera.blit(finalTime, finalTime_rect)
 
-                if self.winTimer <= 180:
-                    timeBonus = 0
-                    tempScore = int(self.score)
-                    if self.timer < MINUTE/2:
-                        tempScore -= 5000
-                        timeBonus = 5000
-                    elif self.timer < 1*MINUTE:
-                        tempScore -= 3000
-                        timeBonus = 3000
-                    elif self.timer < 2*MINUTE:
-                        tempScore -= 1000
-                        timeBonus = 1000
-                    elif self.timer < 3*MINUTE:
-                        tempScore -= 500
-                        timeBonus = 500
-                    elif self.timer < 5*MINUTE:
-                        tempScore -= 100
-                        timeBonus = 100
-                    if self.won == 'secret':
-                        tempScore -= 1000
+                score, score_rect = drawText(f'Score: {self.score}', font_m)
+                score_rect.center = (pygame.math.lerp(-200, WIDTH/2, (self.winTimer-delay2)/30), HEIGHT*3/8)
+                self.camera.blit(score, score_rect)
 
-                    tempScore = str(tempScore)
+                coinBonus, coinBonus_rect = drawText(f'CD Bonus: {self.scoreBonuses[2]}', font_s)   
+                coinBonus_rect.center = (WIDTH/2, HEIGHT/14*9)
+                self.camera.blit(coinBonus, coinBonus_rect)    
 
-                    for um in range(5):
-                        if len(tempScore) < 6:
-                            tempScore = f'0{tempScore}'
+                secretExit, secretExit_rect = drawText(f'Secret Exit Bonus: {self.scoreBonuses[1]}', font_s)
+                secretExit_rect.center = (WIDTH/2, HEIGHT/14*10-10)
+                self.camera.blit(secretExit, secretExit_rect)
 
+                timeBonus, timeBonus_rect = drawText(f'Time Bonus: {self.scoreBonuses[0]}', font_s)
+                timeBonus_rect.center = (WIDTH/2, HEIGHT/14*11-20)
+                self.camera.blit(timeBonus, timeBonus_rect)
 
-                    score, score_rect = drawText(f'Score: {tempScore}', font_m)
+                if checkKeypress([pygame.K_RETURN])[0] and any(self.scoreBonuses) and self.winTimer > delay3:
+                    for bonuses in range(len(self.scoreBonuses)):
+                        self.score += self.scoreBonuses[bonuses]
+                        self.scoreBonuses[bonuses] = 0
+                    snd_register.play()
+                    self.winTimer = delay3
+                    self.setFadeVars(100, FADE_O)
+                    self.fadeTime = -4
 
-                    score_rect.center = (WIDTH/2, HEIGHT/7*4)
+                if self.winTimer > delay3:
+                    if any(self.scoreBonuses):
+                        for bonus in range(len(self.scoreBonuses)):
+                            if self.scoreBonuses[bonus]:
+                                self.scoreBonuses[bonus] -= self.scoreBonuses[bonus] - (self.scoreBonuses[bonus]-50)
+                                self.score += self.scoreBonuses[bonus] - (self.scoreBonuses[bonus]-50)
 
-                    self.camera.blit(score, score_rect)
-
-                if self.winTimer <= 120:
-                    if self.won == 'secret':
-                        secretExit, secretExit_rect = drawText(f'+1000 Secret Exit Bonus', font_s)
-                        secretExit_rect.center = (WIDTH/2, HEIGHT/14*9)
-                        self.camera.blit(secretExit, secretExit_rect)
-                    if timeBonus > 0:
-                        timeBonus, timeBonus_rect = drawText(f'+{timeBonus} Time Bonus', font_s)
-                        timeBonus_rect.center = (WIDTH/2, HEIGHT/7*5-10)
-                        self.camera.blit(timeBonus, timeBonus_rect)
-
-                if self.winTimer <= 60:
-                    tempScore = str(self.score)
-                    for exponent in range(5):
-                        if len(tempScore) < 6:
-                            tempScore = f'0{tempScore}'
-                    finalScore, finalScore_rect = drawText(f'Final Score: {tempScore}', font_l)  
-                    finalScore_rect.center = (WIDTH/2, HEIGHT/14*11)
-                    self.camera.blit(finalScore, finalScore_rect)              
-
-                if self.winTimer == 0:
-                    pressstart, pressstart_rect = drawText(f'Press ENTER to continue', font_s)
-                    pressstart_rect.bottomright = (WIDTH-10, HEIGHT-10)
-                    self.camera.blit(pressstart, pressstart_rect)
-                if self.winTimer < 0:
+                        if not snd_tally.get_num_channels():
+                            snd_tally.play()
+                        if not any(self.scoreBonuses):
+                            snd_register.play()
+                            self.setFadeVars(100, FADE_O)
+                            self.fadeTime = -4
+                if self.winTimer > delay3 and not any(self.scoreBonuses) and self.fadeTime > 0:
                     self.camera.blit(self.fadeLayer)
 
     def drawPlayer(self):
@@ -1081,7 +1121,7 @@ class Player:
         currentMap.update(self)
         for button in currentMap.buttons:
             button.update(self)
-        if SHOWHITBOXES == 1:
+        if SHOWHITBOXES:
             self.debug_drawRect()
         self.drawPlayer()
 
