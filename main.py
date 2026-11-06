@@ -34,7 +34,7 @@ def loadimg(img):
 img_obj = loadimg('assets/objects.png')
 img_flag = loadimg('assets/flags.png')
 img_rock = loadimg('assets/tilesets/rock.png')
-#img_grass = loadimg('assets/tilesets/blugrass.png')
+#img_grass = loadimg('assets/tilesets/grass.png')
 img_coin = loadimg('assets/collectables.png')
 
 snd_spring = pygame.mixer.Sound('assets/sfx/spring.mp3')
@@ -64,7 +64,7 @@ def collide(object, rect, direction):
             doCollide = False
     if doCollide:
         if direction == 'x':
-            if int(object.rect[1]+object.rect[3]-rect[1]) <= 10 and rect[3] <= 10:
+            if 0 < int(object.rect[1]+object.rect[3]-rect[1]) <= 10 and object.yVel == 0:
                 direction = 'y'
                 return
             colliding = rect.colliderect(object.rect)
@@ -94,11 +94,13 @@ def collide(object, rect, direction):
                     if changeY == -0.1:
                         object.jumps[1] = object.jumps[0]
                         object.coyoteTime = 8
+                if object.yVel > 0:
+                    object.onGround = True
                 object.changePos(0, changeY)
                 object.yVel = 0
                 colliding = rect.colliderect(object.rect)
                 collided += 1
-            if int(object.rect[1]+object.rect[3]-rect[1]) <= 10 and rect[3] <= 10 and isinstance(object, Player) and collided >= 1:
+            if int(object.rect[1]+object.rect[3]-rect[1]) <= 10 and object.yVel == 0 and isinstance(object, Player) and collided >= 1:
                 if object.cameraPos[1] <= 0 or object.cameraPos[1] >= -(len(currentMap.map))*TILESIZE+HEIGHT:
                     object.cameraPos = (object.cameraPos[0], object.cameraPos[1]-(object.rect[1]-object.prevPos[1]))
                     object.offsetY += (object.rect[1]-object.prevPos[1])
@@ -162,7 +164,7 @@ class Spring:
             snd_spring.play()
 
         if player != None:
-            player.camera.blit(self.image, dest=(player.cameraPos[0]+self.pos[0], player.cameraPos[1]+self.pos[1]))
+            player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.pos[0], int(player.cameraPos[1])+self.pos[1]))
             self.collide(player)
         if SHOWHITBOXES:
             pygame.draw.rect(player.camera, (255, 0, 0), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
@@ -260,6 +262,7 @@ class Door:
     def __init__(self, x, y, id):
         self.rect = pygame.Rect(x, y, TILESIZE, TILESIZE)
         self.unlocked = False
+        self.defaultUnlocked = False
         self.id = int(id)
         self.image = pygame.Surface((TILESIZE, TILESIZE), pygame.SRCALPHA)
 
@@ -336,7 +339,7 @@ class Button:
         self.pressing = False
 
     def update(self, player):
-        global currentMap
+        global currentMap, playerList
         if not self.pressed:
             self.sprite = (0, TILESIZE, TILESIZE, TILESIZE)
             #self.rect_button = self.buttonrect
@@ -351,20 +354,25 @@ class Button:
         self.image.fill(self.color, special_flags=pygame.BLEND_RGB_MULT)
         self.image.blit(img_obj, area=(TILESIZE*4, TILESIZE, TILESIZE, TILESIZE))
         self.image = pygame.transform.rotate(self.image, -self.rotation*90)
-        if pygame.Rect(player.rect).colliderect(self.press_buttonrect):
-            if not self.pressing:
-                self.pressing = True
-                self.pressed = True
+        collided = False
+        for p in playerList:
+            if pygame.Rect(p.rect).colliderect(self.press_buttonrect):
+                collided = True
+                if not self.pressing:
+                    self.pressing = True
+                    self.pressed = True
+                    snd_button.stop()
+                    snd_button.play()
 
-                snd_button.play()
 
-                for door in currentMap.doors:
-                    if door.id in self.connectedDoorIDs:
-                        if not door.unlocked:
-                            door.unlocked = True
-                        else:
-                            door.unlocked = False
-        else:
+                    for door in currentMap.doors:
+                        if door.id in self.connectedDoorIDs:
+                            if not door.unlocked:
+                                door.unlocked = True
+                            else:
+                                door.unlocked = False
+
+        if not collided:
             self.pressing = False
             self.pressed = False
 
@@ -384,10 +392,12 @@ class Collectable:
         self.image = pygame.Surface((30, 30), pygame.SRCALPHA)
 
     def update(self, player):
+        global playerList
         self.anim += 1
         if self.anim > 169:
             self.anim = 0
         self.frame = math.floor(self.anim/20)
+
         if self.gotTimer == -1:
             self.sprite = (-(self.frame%4*30), 0, 30, 30)
         elif self.gotTimer > 0:
@@ -395,26 +405,52 @@ class Collectable:
             self.sprite = (-130, 0, 30, 30)
             if self.gotTimer == 0:
                 self.got = True
+
         self.image.fill((0,0,0,0))
         self.image.blit(img_coin, self.sprite)
         if 4 <= self.frame <= 7 and self.gotTimer == 0:
             self.image = pygame.transform.flip(self.image, True, False)
+
         if self.rect.colliderect(pygame.Rect(player.rect)) and self.gotTimer == -1:
             snd_twinkle.play()
-            player.coins += 1
+            for p in playerList:
+                p.coins += 1
             self.gotTimer = 7
+
         if not(self.gotTimer == 0):
             player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]))
         if SHOWHITBOXES:
             pygame.draw.rect(player.camera, (200, 200, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
             
+class Bridge:
+    def __init__(self, x, y):
+        self.rect = pygame.Rect(x, y, TILESIZE, 5)
+
+    def collide(self, player):
+        if self.rect.colliderect(pygame.Rect(player.rect)) and player.xVel == 0:
+            player.crouchTimer += 1
+        collision = True
+        if player.crouchTimer > 30:
+            collision = False
+            if player.yVel == 0 or not player.crouching:
+                player.crouchTimer = 0
+        if player.prevPos[1]+player.prevPos[3] <= self.rect[1]+1 and player.rect[1]+player.rect[3] >= self.rect[1] and collision:
+            collide(player, self.rect, 'y')
+
+    def update(self, player):
+        player.camera.blit(img_obj, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]), area=(160, 80, 40, 40))
+        if SHOWHITBOXES:
+            pygame.draw.rect(player.camera, (200, 200, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
+
+class Enemy:
+    def __init__(self, x, y):
+        self.rect = pygame.Rect(x, y, 0, 0)
 
 #not objects
 class Tile:
     def __init__(self, x, y, collide):
         self.rect = pygame.Rect(x*TILESIZE, y*TILESIZE, TILESIZE, TILESIZE)
         self.bg = not collide
-
 
 class Map:
     def __init__(self, folder):
@@ -510,7 +546,7 @@ class Map:
                                     hexcode = property.attrib["value"].replace('#ff', '')
                                     rgb = tuple(int(hexcode[i:i+2], 16) for i in (0, 2, 4))
                                     colored = True
-                        except TypeError, AttributeError:
+                        except (TypeError, AttributeError):
                             fail = True
                             print("Error: Failed to load button door list: No 'Doors' or 'Color' property")
                             print(f'Object ID: {object.attrib['gid']}')
@@ -526,10 +562,13 @@ class Map:
                     case 34:
                         tempDoor = Door(x, y, int(object.attrib["id"]))
                         tempDoor.unlocked = True
+                        tempDoor.defaultUnlocked = True
                         self.objects.append(tempDoor)
                         self.doors.append(tempDoor)
                     case 35:
                         self.coins.append(Collectable(x, y))
+                    case 36:
+                        self.objects.append(Bridge(x, y))
                     case 28:
                         pass
                     case _:
@@ -577,7 +616,6 @@ class Map:
         if not foundSpawn:
             print("Error: No spawn point found!")
             print("Please add a spawn object to the object layer of this level,")
-            print("and set the 'Class' variable to 'Spawn'.")
             print("Setting spawn to default (0,0)...")
             print("")
             self.spawnPos = (0, 0)
@@ -658,12 +696,15 @@ class Player:
         self.frame = 0
         self.spritesheet = loadimg(f'assets/players/{char}.png')
         self.coins = 0
+        self.onGround = False
 
     def reset(self):
-        global currentMap
+        global currentMap, playerList
         self.size = 40
         self.playerSprite = pygame.Surface((int(self.size*3/4), self.size), pygame.SRCALPHA)
         self.jumps = [2, 1]
+        self.crouching = False
+        self.crouchTimer = 0
         self.deathTimer, self.winTimer = 0, -1
         self.offsetX = 0
         self.offsetY = 0
@@ -674,9 +715,7 @@ class Player:
         self.xVel = 0
         self.yVel = 0
         self.grav = 1
-        self.speed = 5
-        self.grav = 1
-        self.speed = 5
+        self.speed = 8
         self.coyoteTime = 0
         self.won = False
         self.fadeTime = 0
@@ -685,9 +724,12 @@ class Player:
         self.dead = False
         self.deathType = ''
         self.scoreBonuses = [0, 0, 0] #time, collectables, secret exit (why did i include secret exit)
-        for coin in currentMap.coins:
-            coin.got, coin.gotTimer = False, -1
-        self.coins = 0
+        if len(playerList) == 1:
+            for coin in currentMap.coins:
+                coin.got, coin.gotTimer = False, -1
+            self.coins = 0
+        for door in currentMap.doors:
+            door.unlocked = door.defaultUnlocked
 
     def setPos(self, x, y):
         self.rect = (x, y, self.rect[2], self.rect[3])
@@ -779,6 +821,8 @@ class Player:
             jumpMultiplier = (1+abs(self.yVel)/15)
         else:
             jumpMultiplier = 1
+        if self.crouching:
+            jumpMultiplier = jumpMultiplier*0.75
         self.yVel = -self.grav*10*jumpMultiplier
 
     def setFadeVars(self, start, end):
@@ -830,15 +874,24 @@ class Player:
 
     def move(self):
         global currentMap, playerList
+        self.onGround = False
         pressedKeys = checkKeypress(self.controls)
         if self.deathType == '':
 
             if pressedKeys[1]:
                 self.facing = 0
-                self.xVel -= self.speed/6
+                xVelAdd = -self.speed/(self.speed+1)
+                if pressedKeys[2]:
+                    xVelAdd = -0.2
             elif pressedKeys[3]:
                 self.facing = 1
-                self.xVel += self.speed/6
+                xVelAdd = self.speed/(self.speed+1)
+                if pressedKeys[2]:
+                    xVelAdd = 0.2
+            else:
+                xVelAdd = 0
+
+            self.xVel += xVelAdd
 
             if self.rect[0] < 0:
                 self.setPos(0, self.rect[1])
@@ -848,10 +901,13 @@ class Player:
                 self.setPos(len(currentMap.map[0])*TILESIZE-self.rect[2], self.rect[1])
                 self.xVel = 0 
 
-            if not(abs(self.yVel) > 0 and not pressedKeys[1] and not pressedKeys[3]):     
+            if abs(self.xVel) < self.speed+2:     
                 self.xVel *= 0.9
             else:
-                self.xVel *= 0.95
+                if (self.xVel < 0 and xVelAdd < 0) or (self.xVel > 0 and xVelAdd > 0):
+                    self.xVel -= xVelAdd
+                else:
+                    self.xVel *= 0.95
             
             self.anim += abs(self.xVel*1.5/6)/10
             self.frame = int(self.anim)%4
@@ -861,6 +917,21 @@ class Player:
         if abs(self.xVel) <= 0.05:
             self.xVel = 0
         self.changePos(self.xVel, 0)
+
+        continueCrouching = False
+        if self.crouching:
+            tempRect = pygame.Rect(self.rect[0], self.rect[1], self.rect[2], self.rect[3]-self.size/4)
+            for tiles in self.getNearbyTiles():
+                if tempRect.colliderect(tiles.rect):
+                    continueCrouching = True
+
+        if pressedKeys[2] or continueCrouching:
+            self.crouching = True
+            self.rect = (self.rect[0], self.rect[1]+self.size/4, self.rect[2], self.rect[3]-self.size/4)
+            self.prevPos = (self.prevPos[0], self.prevPos[1]+self.size/4, self.prevPos[2], self.prevPos[3]-self.size/4)
+        else:
+            self.crouching = False
+            self.crouchTimer = 0
 
         if self.deathType == '':
             if PLAYERCOLLISION == 1:
@@ -876,7 +947,6 @@ class Player:
                 else:
                     collide(self, button.rect, 'x')
                     collide(self, button.rect_button, 'x')
-                #button.update(self)
             for door in currentMap.doors:
                 if not door.unlocked:
                     collide(self, door.rect, 'x')
@@ -917,9 +987,11 @@ class Player:
         for door in currentMap.doors:
             if not door.unlocked:
                 collide(self, door.rect, 'y')
+        for obj in currentMap.objects:
+            if isinstance(obj, Bridge):
+                obj.collide(self)
         for tile in nearbyTiles:
             collide(self, tile.rect, 'y')
-
         if self.coyoteTime > 0:
             self.coyoteTime -= 1
 
@@ -1092,6 +1164,10 @@ class Player:
                 sprite = (30, 40, 30, 40)
             elif player.yVel > 0:
                 sprite = (60, 40, 30, 40)
+
+            if player.crouching:
+                sprite = (0, 80, 30, 40)
+
             if player.deathType != '':
                 sprite = (90, 40, 30, 40)
 
@@ -1119,7 +1195,12 @@ class Player:
             self.deathType = 'fell'
         self.camera.fill((255, 255, 255))
         currentMap.update(self)
+
+        if self.crouching:
+            self.prevPos = (self.prevPos[0], self.prevPos[1]-self.size/4, self.prevPos[2], self.prevPos[3]+self.size/4)
+            self.rect = (self.rect[0], self.rect[1]-self.size/4, self.rect[2], self.rect[3]+self.size/4)
         for button in currentMap.buttons:
+
             button.update(self)
         if SHOWHITBOXES:
             self.debug_drawRect()
@@ -1131,7 +1212,6 @@ class Player:
             self.timer += 1
 
         self.fade()
-
         self.drawUI()
 
 
