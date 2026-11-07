@@ -27,6 +27,7 @@ MINUTE = 3600
 SHOWHITBOXES = 0
 PLAYERCOLLISION = 0
 CLEARMUS = 0
+GROUNDPOUND_BOUNCE = 0
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
@@ -94,7 +95,7 @@ def collide(object, rect, direction):
                     if changeY == -0.1:
                         object.jumps[1] = object.jumps[0]
                         object.coyoteTime = 8
-                if object.yVel > 0:
+                if object.yVel >= 0:
                     object.onGround = True
                 object.changePos(0, changeY)
                 object.yVel = 0
@@ -143,10 +144,14 @@ class Spring:
                 case 1:
                     object.xVel = self.boingness
                 case 2:
-                    object.yVel = self.boingness
+                    if isinstance(object, Player):
+                        if object.currentAbility[0] == "gp":
+                            object.yVel = self.boingness*1.5
+                    else:
+                        object.yVel = self.boingness
                 case 3:
                     object.xVel = -self.boingness
-            if isinstance(object, Player):
+            if isinstance(object, Player) and self.rotation == 0:
                 object.jumps[1] = 1
             self.activateTimer = 30
 
@@ -182,7 +187,7 @@ class Goal:
         self.anim = 0
 
     def collide(self, player):
-        if self.rect.colliderect(player.rect) and player.deathType == '':
+        if self.rect.colliderect(player.rect) and player.deathType == '' or player.won == self.type:
             player.win(self.type)
 
     def update(self, player):
@@ -220,7 +225,7 @@ class Spike:
     def collide(self, object):
         if self.rect.colliderect(object.rect):
             if isinstance(object, Player):
-                if object.deathType == '':
+                if object.deathType == '' and (object.deathType == '' or not object.won):
                     object.deathType = 'spike'
 
     def update(self, player):
@@ -247,7 +252,7 @@ class Checkpoint:
         self.sprite = (120, 0, 40, 40)
 
     def update(self, player):
-        if self.rect.colliderect(player.rect) and player.checkpoint != self and player.deathType == '':
+        if self.rect.colliderect(player.rect) and player.checkpoint != self and (player.deathType == '' or not player.won):
             player.checkpoint = self
             player.lastCheckpoint = (self.rect[0], self.rect[1])
         if player.checkpoint == self:
@@ -411,7 +416,7 @@ class Collectable:
         if 4 <= self.frame <= 7 and self.gotTimer == 0:
             self.image = pygame.transform.flip(self.image, True, False)
 
-        if self.rect.colliderect(pygame.Rect(player.rect)) and self.gotTimer == -1:
+        if self.rect.colliderect(pygame.Rect(player.rect)) and self.gotTimer == -1 and (player.deathType == '' and not player.won):
             snd_twinkle.play()
             for p in playerList:
                 p.coins += 1
@@ -697,6 +702,7 @@ class Player:
         self.spritesheet = loadimg(f'assets/players/{char}.png')
         self.coins = 0
         self.onGround = False
+        self.canMove = True
 
     def reset(self):
         global currentMap, playerList
@@ -705,6 +711,7 @@ class Player:
         self.jumps = [2, 1]
         self.crouching = False
         self.crouchTimer = 0
+        self.currentAbility = [None, None]
         self.deathTimer, self.winTimer = 0, -1
         self.offsetX = 0
         self.offsetY = 0
@@ -730,6 +737,7 @@ class Player:
             self.coins = 0
         for door in currentMap.doors:
             door.unlocked = door.defaultUnlocked
+        self.canMove = True
 
     def setPos(self, x, y):
         self.rect = (x, y, self.rect[2], self.rect[3])
@@ -750,6 +758,10 @@ class Player:
     def win(self, exitType):
         global playerList, currentMap
         if not self.won:
+            if self.crouching:
+                self.prevPos = (self.prevPos[0], self.prevPos[1]-self.size/4, self.prevPos[2], self.prevPos[3]+self.size/4)
+                self.rect = (self.rect[0], self.rect[1]-self.size/4, self.rect[2], self.rect[3]+self.size/4)
+                self.crouching = False
             self.setFadeVars(100, 100)
             self.score = int(self.score)
             if self.timer < MINUTE/2:
@@ -766,6 +778,7 @@ class Player:
             self.won = exitType
             if self.won == 'secret':
                 self.scoreBonuses[1] = 1000
+            self.canMove = False
             
         allWon = True
         for player in playerList:
@@ -824,6 +837,8 @@ class Player:
         if self.crouching:
             jumpMultiplier = jumpMultiplier*0.75
         self.yVel = -self.grav*10*jumpMultiplier
+        if self.currentAbility == ["gp", 1]:
+            self.currentAbility = [None, None]
 
     def setFadeVars(self, start, end):
         self.fadeTime = 0
@@ -874,9 +889,8 @@ class Player:
 
     def move(self):
         global currentMap, playerList
-        self.onGround = False
         pressedKeys = checkKeypress(self.controls)
-        if self.deathType == '':
+        if self.canMove:
 
             if pressedKeys[1]:
                 self.facing = 0
@@ -893,13 +907,15 @@ class Player:
 
             self.xVel += xVelAdd
 
-            if self.rect[0] < 0:
-                self.setPos(0, self.rect[1])
-                self.xVel = 0
+        if self.rect[0] < 0:
+            self.setPos(0, self.rect[1])
+            self.xVel = 0
 
-            if self.rect[0]+self.rect[2] > len(currentMap.map[0])*TILESIZE:
-                self.setPos(len(currentMap.map[0])*TILESIZE-self.rect[2], self.rect[1])
-                self.xVel = 0 
+        if self.rect[0]+self.rect[2] > len(currentMap.map[0])*TILESIZE:
+            self.setPos(len(currentMap.map[0])*TILESIZE-self.rect[2], self.rect[1])
+            self.xVel = 0 
+
+        if self.deathType == '':
 
             if abs(self.xVel) < self.speed+2:     
                 self.xVel *= 0.9
@@ -912,7 +928,7 @@ class Player:
             self.anim += abs(self.xVel*1.5/6)/10
             self.frame = int(self.anim)%4
 
-        self.xVel = round(self.xVel, 2)
+            self.xVel = round(self.xVel, 2)
 
         if abs(self.xVel) <= 0.05:
             self.xVel = 0
@@ -920,7 +936,7 @@ class Player:
 
         continueCrouching = False
         if self.crouching:
-            tempRect = pygame.Rect(self.rect[0], self.rect[1], self.rect[2], self.rect[3]-self.size/4)
+            tempRect = pygame.Rect(self.rect[0]+1, self.rect[1], self.rect[2]-2, self.rect[3]-self.size/4)
             for tiles in self.getNearbyTiles():
                 if tempRect.colliderect(tiles.rect):
                     continueCrouching = True
@@ -931,31 +947,51 @@ class Player:
             self.prevPos = (self.prevPos[0], self.prevPos[1]+self.size/4, self.prevPos[2], self.prevPos[3]-self.size/4)
         else:
             self.crouching = False
-            self.crouchTimer = 0
+            self.crouchTimer = 0     
 
-        if self.deathType == '':
+        if self.canMove:
+            if pressedKeys[2]:
+                if not self.keysDown[2]:
+                    self.keysDown[2] = True
+                    if self.crouching and (self.jumps[1] < self.jumps[0]) and self.currentAbility == [None, None]:
+                        self.currentAbility = ["gp", 0] #ground pound
+                        self.yVel = 10*self.grav
+            else:
+                self.keysDown[2] = False
+
+            if self.yVel <= 0 and self.currentAbility[0] == "gp":
+                if self.currentAbility[1] == 0:
+                    if GROUNDPOUND_BOUNCE:
+                        if pressedKeys[2]:
+                            self.yVel = -self.grav*8
+                        self.currentAbility = ["gp", 1]
+                    else:
+                        self.currentAbility = [None, None]
+                elif self.currentAbility[1] == 1 and self.onGround:
+                    self.currentAbility = [None, None]
+
             if PLAYERCOLLISION == 1:
                 for player in playerList:
                     if player != self and not player.won:
                         self.playerCollide(player, 'x')
 
-            nearbyTiles = self.getNearbyTiles()
-            for button in currentMap.buttons:
-                if (button.rotation == 1 and self.xVel < 0) or (button.rotation == 3 and self.xVel > 0):
-                    collide(self, button.rect_button, 'x')
-                    collide(self, button.rect, 'x')
-                else:
-                    collide(self, button.rect, 'x')
-                    collide(self, button.rect_button, 'x')
-            for door in currentMap.doors:
-                if not door.unlocked:
-                    collide(self, door.rect, 'x')
-            for tile in nearbyTiles:
-                collide(self, tile.rect, 'x')
+        nearbyTiles = self.getNearbyTiles()
+        for button in currentMap.buttons:
+            if (button.rotation == 1 and self.xVel < 0) or (button.rotation == 3 and self.xVel > 0):
+                collide(self, button.rect_button, 'x')
+                collide(self, button.rect, 'x')
+            else:
+                collide(self, button.rect, 'x')
+                collide(self, button.rect_button, 'x')
+        for door in currentMap.doors:
+            if not door.unlocked:
+                collide(self, door.rect, 'x')
+        for tile in nearbyTiles:
+            collide(self, tile.rect, 'x')
 
         self.yVel += self.grav/2
 
-        if pressedKeys[0] and self.deathType == '':
+        if pressedKeys[0] and self.canMove:
             if self.keysDown[1] == False:
                 self.keysDown[1] = True
                 if self.jumps[1] > 0:
@@ -974,6 +1010,8 @@ class Player:
             for player in playerList:
                 if player != self and not player.won:
                     self.playerCollide(player, 'y')
+
+        self.onGround = False
 
         nearbyTiles = self.getNearbyTiles()
         for button in currentMap.buttons:
@@ -1000,7 +1038,7 @@ class Player:
         rightCameraBorder = self.rect[0]+int(self.size*3/4) > WIDTH*0.6-self.cameraPos[0] and self.xVel > 0.75 and self.cameraPos[0] > -(len(currentMap.map[0]))*TILESIZE+WIDTH
         leftCameraBorder = self.rect[0] < WIDTH*0.4-self.cameraPos[0] and self.xVel < -0.75 and self.cameraPos[0] < 0
         topCameraBorder = self.rect[1] < HEIGHT*0.4-self.cameraPos[1] and self.yVel < -0.75 and self.cameraPos[1] < 0
-        bottomCameraBorder = self.rect[1]+self.size > HEIGHT*0.4-self.cameraPos[1] and self.yVel > 0.75 and self.cameraPos[1] > -(len(currentMap.map))*TILESIZE+HEIGHT
+        bottomCameraBorder = self.rect[1]+self.size > HEIGHT*0.6-self.cameraPos[1] and self.yVel > 0.75 and self.cameraPos[1] > -(len(currentMap.map))*TILESIZE+HEIGHT
 
         if leftCameraBorder or rightCameraBorder:
             self.cameraPos = (self.cameraPos[0]-(self.rect[0]-self.prevPos[0]), self.cameraPos[1])
@@ -1166,7 +1204,10 @@ class Player:
                 sprite = (60, 40, 30, 40)
 
             if player.crouching:
-                sprite = (0, 80, 30, 40)
+                sprite = ((player.frame%2)*30, 80, 30, 40)
+
+            if player.currentAbility == ["gp", 0]:
+                sprite = (60, 80, 30, 40)
 
             if player.deathType != '':
                 sprite = (90, 40, 30, 40)
@@ -1185,22 +1226,23 @@ class Player:
 
     def update(self):
         global playerList
-        if not self.won:
-            self.move()
-            if self.deathType == '':
-                self.cameraMove()
-        if self.deathType != '':
+        self.move()
+        if self.deathType == '':
+            self.cameraMove()
+        if self.deathType != '' and not self.won:
             self.die(self.deathType)
-        if self.rect[1] > (len(currentMap.map)+2)*TILESIZE and self.deathType == '':
+        if self.rect[1] > (len(currentMap.map)+2)*TILESIZE and self.deathType == '' and not self.won:
             self.deathType = 'fell'
+        if self.deathType != '' or self.won:
+            self.canMove = False
         self.camera.fill((255, 255, 255))
         currentMap.update(self)
 
         if self.crouching:
             self.prevPos = (self.prevPos[0], self.prevPos[1]-self.size/4, self.prevPos[2], self.prevPos[3]+self.size/4)
             self.rect = (self.rect[0], self.rect[1]-self.size/4, self.rect[2], self.rect[3]+self.size/4)
-        for button in currentMap.buttons:
 
+        for button in currentMap.buttons:
             button.update(self)
         if SHOWHITBOXES:
             self.debug_drawRect()
