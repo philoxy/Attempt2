@@ -140,15 +140,17 @@ class Spring:
         if self.rect.colliderect(object.rect):
             match self.rotation:
                 case 0:
-                    object.yVel = -self.boingness
+                    if isinstance(object, Player):
+                        if object.currentAbility[0] == "gp":
+                            object.yVel = -self.boingness*1.2
+                        else:
+                            object.yVel = -self.boingness
+                    else:
+                        object.yVel = -self.boingness
                 case 1:
                     object.xVel = self.boingness
                 case 2:
-                    if isinstance(object, Player):
-                        if object.currentAbility[0] == "gp":
-                            object.yVel = self.boingness*1.5
-                    else:
-                        object.yVel = self.boingness
+                    object.yVel = self.boingness
                 case 3:
                     object.xVel = -self.boingness
             if isinstance(object, Player) and self.rotation == 0:
@@ -252,7 +254,7 @@ class Checkpoint:
         self.sprite = (120, 0, 40, 40)
 
     def update(self, player):
-        if self.rect.colliderect(player.rect) and player.checkpoint != self and (player.deathType == '' or not player.won):
+        if self.rect.colliderect(player.rect) and player.checkpoint != self and (player.deathType == '' and not player.won):
             player.checkpoint = self
             player.lastCheckpoint = (self.rect[0], self.rect[1])
         if player.checkpoint == self:
@@ -831,11 +833,11 @@ class Player:
 
     def jump(self):
         if self.yVel < 0:
-            jumpMultiplier = (1+abs(self.yVel)/15)
+            jumpMultiplier = (1+abs(self.yVel)/20)
         else:
             jumpMultiplier = 1
-        if self.crouching:
-            jumpMultiplier = jumpMultiplier*0.75
+        if self.crouching and self.onGround:
+            jumpMultiplier = jumpMultiplier*1.5
         self.yVel = -self.grav*10*jumpMultiplier
         if self.currentAbility == ["gp", 1]:
             self.currentAbility = [None, None]
@@ -941,7 +943,7 @@ class Player:
                 if tempRect.colliderect(tiles.rect):
                     continueCrouching = True
 
-        if pressedKeys[2] or continueCrouching:
+        if (pressedKeys[2]) or continueCrouching:
             self.crouching = True
             self.rect = (self.rect[0], self.rect[1]+self.size/4, self.rect[2], self.rect[3]-self.size/4)
             self.prevPos = (self.prevPos[0], self.prevPos[1]+self.size/4, self.prevPos[2], self.prevPos[3]-self.size/4)
