@@ -732,7 +732,7 @@ class Player:
         self.facing = 1
         self.dead = False
         self.deathType = ''
-        self.scoreBonuses = [0, 0, 0] #time, collectables, secret exit (why did i include secret exit)
+        self.scoreBonuses = [0, 0, 0, 0] #time, collectables, secret exit, perfect
         if len(playerList) == 1:
             for coin in currentMap.coins:
                 coin.got, coin.gotTimer = False, -1
@@ -777,6 +777,8 @@ class Player:
             elif self.timer < 5*MINUTE:
                 self.scoreBonuses[0] = 100
             self.scoreBonuses[2] = self.coins*100
+            if self.coins == len(currentMap.coins):
+                self.scoreBonuses[3] = 5000
             self.won = exitType
             if self.won == 'secret':
                 self.scoreBonuses[1] = 1000
@@ -1150,19 +1152,23 @@ class Player:
 
                 score, score_rect = drawText(f'Score: {self.score}', font_m)
                 score_rect.center = (pygame.math.lerp(-200, WIDTH/2, (self.winTimer-delay2)/30), HEIGHT*3/8)
-                self.camera.blit(score, score_rect)
+                self.camera.blit(score, score_rect)  
 
-                coinBonus, coinBonus_rect = drawText(f'CD Bonus: {self.scoreBonuses[2]}', font_s)   
-                coinBonus_rect.center = (WIDTH/2, HEIGHT/14*9)
-                self.camera.blit(coinBonus, coinBonus_rect)    
+                timeBonus, timeBonus_rect = drawText(f'Time Bonus: {self.scoreBonuses[0]}', font_s)
+                timeBonus_rect.center = (WIDTH/2, HEIGHT/14*9)
+                self.camera.blit(timeBonus, timeBonus_rect)
 
                 secretExit, secretExit_rect = drawText(f'Secret Exit Bonus: {self.scoreBonuses[1]}', font_s)
                 secretExit_rect.center = (WIDTH/2, HEIGHT/14*10-10)
                 self.camera.blit(secretExit, secretExit_rect)
 
-                timeBonus, timeBonus_rect = drawText(f'Time Bonus: {self.scoreBonuses[0]}', font_s)
-                timeBonus_rect.center = (WIDTH/2, HEIGHT/14*11-20)
-                self.camera.blit(timeBonus, timeBonus_rect)
+                coinBonus, coinBonus_rect = drawText(f'CD Bonus: {self.scoreBonuses[2]}', font_s)   
+                coinBonus_rect.center = (WIDTH/2, HEIGHT/14*11-20)
+                self.camera.blit(coinBonus, coinBonus_rect)
+
+                perfectBonus, perfectBonus_rect = drawText(f'Perfect Bonus: {self.scoreBonuses[3]}', font_s)
+                perfectBonus_rect.center = (WIDTH/2, HEIGHT/14*12-30)
+                self.camera.blit(perfectBonus, perfectBonus_rect)
 
                 if checkKeypress([pygame.K_RETURN])[0] and any(self.scoreBonuses) and self.winTimer > delay3:
                     for bonuses in range(len(self.scoreBonuses)):
