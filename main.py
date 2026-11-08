@@ -28,6 +28,7 @@ SHOWHITBOXES = 0
 PLAYERCOLLISION = 0
 CLEARMUS = 0
 GROUNDPOUND_BOUNCE = 0
+GROUNDPOUND_PREVENTCROUCH = 0
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
@@ -59,6 +60,7 @@ def ease(t):
 
 def collide(object, rect, direction):
     global currentMap
+    collided = False
     doCollide = True
     if isinstance(object, Player):
         if object.deathType != '':
@@ -76,15 +78,15 @@ def collide(object, rect, direction):
 
             if colliding:
                 object.prevPos = object.rect
+                collided = True
 
             while colliding:
-                object.changePos(changeX, 0)
+                object.rect = changePos(object.rect, changeX, 0)
                 object.xVel = 0
                 colliding = rect.colliderect(object.rect)
 
         if direction == 'y':
             colliding = rect.colliderect(object.rect)
-            collided = 0
             if (object.rect[1]-object.prevPos[1]) < 0:
                 changeY = 0.1
             elif (object.rect[1]-object.prevPos[1]) >= 0:
@@ -97,14 +99,15 @@ def collide(object, rect, direction):
                         object.coyoteTime = 8
                 if object.yVel >= 0:
                     object.onGround = True
-                object.changePos(0, changeY)
+                object.rect = changePos(object.rect, 0, changeY)
                 object.yVel = 0
                 colliding = rect.colliderect(object.rect)
-                collided += 1
-            if int(object.rect[1]+object.rect[3]-rect[1]) <= 10 and object.yVel == 0 and isinstance(object, Player) and collided >= 1:
+                collided = True
+            if int(object.rect[1]+object.rect[3]-rect[1]) <= 10 and object.yVel == 0 and isinstance(object, Player) and collided:
                 if object.cameraPos[1] <= 0 or object.cameraPos[1] >= -(len(currentMap.map))*TILESIZE+HEIGHT:
                     object.cameraPos = (object.cameraPos[0], object.cameraPos[1]-(object.rect[1]-object.prevPos[1]))
                     object.offsetY += (object.rect[1]-object.prevPos[1])
+    return collided
 
 #objects
 class Spring:
@@ -270,8 +273,26 @@ class Door:
         self.rect = pygame.Rect(x, y, TILESIZE, TILESIZE)
         self.unlocked = False
         self.defaultUnlocked = False
+        self.unlockable = False
         self.id = int(id)
         self.image = pygame.Surface((TILESIZE, TILESIZE), pygame.SRCALPHA)
+
+    def objectCollide(self):
+        global playerList, currentMap
+        collided = False
+        rects = []
+        tempRect = pygame.FRect(self.rect[0]+1, self.rect[1]+1, self.rect[2]-2, self.rect[3]-2)
+        for player in playerList:
+            if player.canMove:
+                rects.append(player.rect)
+        for enemy in currentMap.enemies:
+            if not enemy.dead:
+                rects.append(enemy.rect)
+        for rect in rects:
+            if rect.colliderect(tempRect):
+                collided = True
+                break
+        return collided
 
     def update(self, player):
         if not self.unlocked:
@@ -366,18 +387,26 @@ class Button:
             if pygame.Rect(p.rect).colliderect(self.press_buttonrect):
                 collided = True
                 if not self.pressing:
-                    self.pressing = True
-                    self.pressed = True
-                    snd_button.stop()
-                    snd_button.play()
 
-
+                    unlock = True
                     for door in currentMap.doors:
                         if door.id in self.connectedDoorIDs:
-                            if not door.unlocked:
-                                door.unlocked = True
-                            else:
-                                door.unlocked = False
+                            if door.objectCollide():
+                                unlock = False
+                                break
+                    self.pressed = True
+                    if unlock:
+                        self.pressing = True
+                        snd_button.stop()
+                        snd_button.play()
+
+
+                        for door in currentMap.doors:
+                            if door.id in self.connectedDoorIDs:
+                                if not door.unlocked:
+                                    door.unlocked = True
+                                else:
+                                    door.unlocked = False
 
         if not collided:
             self.pressing = False
@@ -434,13 +463,16 @@ class Bridge:
         self.rect = pygame.Rect(x, y, TILESIZE, 5)
 
     def collide(self, player):
-        if self.rect.colliderect(pygame.Rect(player.rect)) and player.xVel == 0:
-            player.crouchTimer += 1
-        collision = True
-        if player.crouchTimer > 30:
-            collision = False
-            if player.yVel == 0 or not player.crouching:
-                player.crouchTimer = 0
+        if isinstance(player, Player):
+            if self.rect.colliderect(pygame.Rect(player.rect)) and not checkKeypress([player.controls[1]])[0] and not checkKeypress([player.controls[3]])[0]:
+                player.crouchTimer += 1
+            collision = True
+            if player.crouchTimer > 30:
+                collision = False
+                if player.yVel == 0 or not player.crouching:
+                    player.crouchTimer = 0
+        else:
+            collision = True
         if player.prevPos[1]+player.prevPos[3] <= self.rect[1]+1 and player.rect[1]+player.rect[3] >= self.rect[1] and collision:
             collide(player, self.rect, 'y')
 
@@ -449,9 +481,114 @@ class Bridge:
         if SHOWHITBOXES:
             pygame.draw.rect(player.camera, (200, 200, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
 
+def enemymove_normal(enemy):
+    global currentMap, playerList
+    enemy.rect = changePos(enemy.rect, enemy.xVel, 0)
+    collided = False
+
+    if not enemy.dead:
+        enemy.xVel = enemy.facing*enemy.speed
+
+    enemy.rect = changePos(enemy.rect, enemy.xVel, 0)
+
+    if not enemy.dead:
+
+        for button in currentMap.buttons:
+            if button.rotation != 0:
+                collide(enemy, button.rect, 'x')
+                collide(enemy, button.rect_button, 'x')
+            else:
+                collide(enemy, button.rect_button, 'x')
+                collide(enemy, button.rect, 'x')
+        for door in currentMap.doors:
+            if not door.unlocked:
+                collide(enemy, door.rect, 'x')
+        for tile in getNearbyTiles(enemy):
+            collide(enemy, tile.rect, 'x')
+
+        if enemy.xVel == 0:
+            if not enemy.turned:
+                enemy.facing *= -1
+            enemy.turned = True
+            enemy.xVel = enemy.facing*enemy.speed
+        else:
+            enemy.turned = False
+
+        if enemy.rect[0] < 0:
+            enemy.rect = setPos(enemy.rect, 0, enemy.rect[1])
+            enemy.facing = 1
+
+        if enemy.rect[0]+enemy.rect[2] > len(currentMap.map[0])*TILESIZE:
+            enemy.rect = setPos(enemy.rect, len(currentMap.map[0])*TILESIZE-enemy.rect[2], enemy.rect[1])
+            enemy.facing = 0
+
+    enemy.yVel += currentMap.grav/2
+
+    enemy.rect = changePos(enemy.rect, 0, enemy.yVel)
+
+    if not enemy.dead:
+        for button in currentMap.buttons:
+            if button.rotation != 0:
+                collide(enemy, button.rect, 'y')
+                collide(enemy, button.rect_button, 'y')
+            else:
+                collide(enemy, button.rect_button, 'y')
+                collide(enemy, button.rect, 'y')
+        for door in currentMap.doors:
+            if not door.unlocked:
+                collide(enemy, door.rect, 'y')
+        for obj in currentMap.objects:
+            if isinstance(obj, Bridge):
+                obj.collide(enemy)
+        for tile in getNearbyTiles(enemy):
+            collide(enemy, tile.rect, 'y')
+
+        enemy.anim += 1
+        if enemy.anim > 119:
+            enemy.anim = 0
+
+        enemy.frame = int(enemy.anim/30)
+
+    if enemy.dead:
+        enemy.frame = 4
+
+    enemy.image.fill((0,0,0,0))
+    enemy.image.blit(enemy.spritesheet, area=(enemy.frame*40, 0, 40, 30))
+    
+    if enemy.facing == -1:
+        enemy.image = pygame.transform.flip(enemy.image, True, False)
+
 class Enemy:
-    def __init__(self, x, y):
-        self.rect = pygame.Rect(x, y, 0, 0)
+    def __init__(self, x, y, type):
+        self.type = type
+        self.spritesheet = loadimg(f'assets/enemies/{type}.png')
+        self.originalPos = (x, y)
+        self.reset()
+        if self.type == "evilbrick":
+            self.image = pygame.Surface((40, 30), pygame.SRCALPHA)
+
+    def reset(self):
+        self.anim = 0
+        self.frame = 0
+        self.xVel, self.yVel = 0, 0
+        self.dead, self.deathTimer = 0, 0
+        if self.type == "evilbrick":
+            self.turned = False
+            self.facing = 1
+            self.speed = 0.5
+            self.rect = pygame.Rect(self.originalPos[0], self.originalPos[1]-30, 40, 30)
+        self.prevPos = self.rect
+        
+    def update(self, player):
+        if not(self.rect[1] > (len(currentMap.map)+2)*TILESIZE and self.dead):
+            match self.type:
+                case "evilbrick":
+                    enemymove_normal(self)
+
+            player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]))
+            if SHOWHITBOXES:
+                pygame.draw.rect(player.camera, (200, 200, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
+            self.prevPos = self.rect
 
 #not objects
 class Tile:
@@ -462,6 +599,7 @@ class Tile:
 class Map:
     def __init__(self, folder):
         self.path = folder
+        self.grav = 1
         self.bg = loadimg(f'{folder}/bg.png')
         self.mus = pygame.mixer.Sound(f'{folder}/mus.mp3')
         with open(f'{folder}/mus.pxy', 'r') as file:
@@ -479,6 +617,7 @@ class Map:
         self.map, self.bgmap = [], []
         self.parsetmx(folder)
         self.loadObjects()
+        self.loadEnemies()
         self.map, self.tiles, self.mapsurf = self.draw(self.map)
         self.bgmap, a, self.bgmapsurf = self.draw(self.bgmap, False)
         self.bgmapsurf.fill((128,128,128), special_flags=pygame.BLEND_RGB_MULT)
@@ -489,13 +628,14 @@ class Map:
         tempObjects = self.objects
         self.objects, self.doors, self.buttons, self.coins = [], [], [], []
         exit, secretexit = False, False
+        #regular objects
         for object in tempObjects:
-            t = False
+            isText = False
             x, y = float(object.attrib['x']), float(object.attrib['y'])-TILESIZE
             try:
                 type =  int(object.attrib['gid'])
             except KeyError:
-                t = True
+                isText = True
                 text = object.find("text")
                 if text.text == None:
                     print("Error: Failed to load text object: No text specified")
@@ -509,33 +649,34 @@ class Map:
                     except KeyError:
                         textSize = 16
                     self.objects.append(Text(float(object.attrib['x']), float(object.attrib['y'])-TILESIZE, text.text, textSize))
-                
 
-            if not t:
+            if not isText:
                 match type:
-                    case 29:
+                    case 26: #normal exit
+                        if not exit:
+                            self.objects.append(Goal(x, y, 'normal'))
+                            exit == True
+                    case 27: #secret exit
+                        if not secretexit:
+                            self.objects.append(Goal(x, y, 'secret'))
+                            secretexit == True
+                    case 28: #spawn
+                        pass
+                    case 29: #spring
                         try:
                             rotation = int(float(object.attrib['rotation']))
                         except KeyError:
                             rotation = 0
                         self.objects.append(Spring(x, y, rotation))
-                    case 26:
-                        if not exit:
-                            self.objects.append(Goal(x, y, 'normal'))
-                            exit == True
-                    case 27:
-                        if not secretexit:
-                            self.objects.append(Goal(x, y, 'secret'))
-                            secretexit == True
-                    case 30:
+                    case 30: #spike
                         try:
                             rotation = int(float(object.attrib['rotation']))
                         except KeyError:
                             rotation = 0
                         self.objects.append(Spike(x, y, rotation))
-                    case 31:
+                    case 31: #checkpoint
                         self.objects.append(Checkpoint(x, y))
-                    case 32:
+                    case 32: #button
                         try:
                             rotation = int(float(object.attrib['rotation']))
                         except KeyError:
@@ -562,22 +703,20 @@ class Map:
                         if not fail:
                             tempButton = Button(x, y, rotation, doorIDs, rgb)
                             self.buttons.append(tempButton)
-                    case 33:
+                    case 33: #locked door
                         tempDoor = Door(x, y, int(object.attrib["id"]))
                         self.objects.append(tempDoor)
                         self.doors.append(tempDoor)
-                    case 34:
+                    case 34: #unlocked door
                         tempDoor = Door(x, y, int(object.attrib["id"]))
                         tempDoor.unlocked = True
                         tempDoor.defaultUnlocked = True
                         self.objects.append(tempDoor)
                         self.doors.append(tempDoor)
-                    case 35:
+                    case 35: #collectable
                         self.coins.append(Collectable(x, y))
-                    case 36:
+                    case 36: #bridge
                         self.objects.append(Bridge(x, y))
-                    case 28:
-                        pass
                     case _:
                         print("Error: Failed to load object: Unknown object type")
                         print(f'Object ID: {object.attrib['gid']}')
@@ -600,6 +739,17 @@ class Map:
                 door.color = (255, 255, 255)
 
 
+    def loadEnemies(self):
+        tempEnemies = self.enemies
+        self.enemies = []
+        for enemy in tempEnemies:
+            x, y = float(enemy.attrib['x']), float(enemy.attrib['y'])
+            type = int(enemy.attrib['gid'])
+            match type:
+                case 51:
+                    self.enemies.append(Enemy(x, y, "evilbrick"))
+            
+
     def parsetmx(self, folder):
         tree = ET.parse(f'{folder}/map.tmx')
         root = tree.getroot()
@@ -609,8 +759,11 @@ class Map:
                     mapstr = item.find("data").text
                 if item.attrib["name"] == "Background":
                     bgmapstr = item.find("data").text
-            if item.tag == "objectgroup" and item.attrib["name"] == "Objects":
-                self.objects = item
+            if item.tag == "objectgroup":
+                if item.attrib["name"] == "Objects":
+                    self.objects = item
+                if item.attrib["name"] == "Enemies":
+                    self.enemies = item
         foundSpawn = False
         for object in self.objects:
             try:
@@ -662,6 +815,17 @@ class Map:
 
         return map, tiles, mapsurf
 
+    def reset(self):
+        global playerList
+        if len(playerList) == 1:
+            for coin in self.coins:
+                coin.got, coin.gotTimer = False, -1
+            playerList[0].coins = 0
+            for enemy in self.enemies:
+                enemy.reset()
+            for door in self.doors:
+                door.unlocked = door.defaultUnlocked
+
     def drawBG(self, player):
         player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640-640, 0))
         player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640, 0))
@@ -674,6 +838,8 @@ class Map:
             object.update(player)
         for coin in self.coins:
             coin.update(player)
+        for enemy in self.enemies:
+            enemy.update(player)
         if self.musPopupTimer < 210 and PLAYERS == 1:
             self.musPopupTimer += 1
             if self.musPopupTimer <= 30:
@@ -733,19 +899,8 @@ class Player:
         self.dead = False
         self.deathType = ''
         self.scoreBonuses = [0, 0, 0, 0] #time, collectables, secret exit, perfect
-        if len(playerList) == 1:
-            for coin in currentMap.coins:
-                coin.got, coin.gotTimer = False, -1
-            self.coins = 0
-        for door in currentMap.doors:
-            door.unlocked = door.defaultUnlocked
+        currentMap.reset()
         self.canMove = True
-
-    def setPos(self, x, y):
-        self.rect = (x, y, self.rect[2], self.rect[3])
-
-    def changePos(self, x, y):
-        self.rect = (round(self.rect[0] + x, 2), round(self.rect[1] + y, 2), self.rect[2], self.rect[3])
 
     def debug_drawRect(self):
         global playerList
@@ -761,8 +916,8 @@ class Player:
         global playerList, currentMap
         if not self.won:
             if self.crouching:
-                self.prevPos = (self.prevPos[0], self.prevPos[1]-self.size/4, self.prevPos[2], self.prevPos[3]+self.size/4)
-                self.rect = (self.rect[0], self.rect[1]-self.size/4, self.rect[2], self.rect[3]+self.size/4)
+                self.prevPos = pygame.FRect(self.prevPos[0], self.prevPos[1]-self.size/4, self.prevPos[2], self.prevPos[3]+self.size/4)
+                self.rect = pygame.FRect(self.rect[0], self.rect[1]-self.size/4, self.rect[2], self.rect[3]+self.size/4)
                 self.crouching = False
             self.setFadeVars(100, 100)
             self.score = int(self.score)
@@ -866,7 +1021,7 @@ class Player:
                 elif self.xVel < 0 and not checkKeypress([player.controls[1]])[0]:
                     player.xVel = -2
             while colliding:
-                self.changePos(changeX, 0)
+                self.rect = changePos(self.rect, changeX, 0)
                 self.xVel = 0
                 colliding = pygame.Rect(self.rect).colliderect(player.rect)
         elif axis == 'y':
@@ -877,7 +1032,7 @@ class Player:
                 changeY = -0.5
 
             while colliding:
-                self.changePos(0, changeY)
+                self.rect = changePos(self.rect, 0, changeY)
                 self.coyoteTime = 5
                 if self.yVel < 0:
                     tempyVel = self.yVel
@@ -897,14 +1052,16 @@ class Player:
         if self.canMove:
 
             if pressedKeys[1]:
-                self.facing = 0
+                if self.onGround:
+                    self.facing = 0
                 xVelAdd = -self.speed/(self.speed+1)
-                if pressedKeys[2]:
+                if self.crouching:
                     xVelAdd = -0.2
             elif pressedKeys[3]:
-                self.facing = 1
+                if self.onGround:
+                    self.facing = 1
                 xVelAdd = self.speed/(self.speed+1)
-                if pressedKeys[2]:
+                if self.crouching:
                     xVelAdd = 0.2
             else:
                 xVelAdd = 0
@@ -912,11 +1069,11 @@ class Player:
             self.xVel += xVelAdd
 
         if self.rect[0] < 0:
-            self.setPos(0, self.rect[1])
+            self.rect = setPos(self.rect, 0, self.rect[1])
             self.xVel = 0
 
         if self.rect[0]+self.rect[2] > len(currentMap.map[0])*TILESIZE:
-            self.setPos(len(currentMap.map[0])*TILESIZE-self.rect[2], self.rect[1])
+            self.rect = setPos(self.rect, len(currentMap.map[0])*TILESIZE-self.rect[2], self.rect[1])
             self.xVel = 0 
 
         if self.deathType == '':
@@ -936,50 +1093,64 @@ class Player:
 
         if abs(self.xVel) <= 0.05:
             self.xVel = 0
-        self.changePos(self.xVel, 0)
-
-        continueCrouching = False
-        if self.crouching:
-            tempRect = pygame.Rect(self.rect[0]+1, self.rect[1], self.rect[2]-2, self.rect[3]-self.size/4)
-            for tiles in self.getNearbyTiles():
-                if tempRect.colliderect(tiles.rect):
-                    continueCrouching = True
-
-        if (pressedKeys[2]) or continueCrouching:
-            self.crouching = True
-            self.rect = (self.rect[0], self.rect[1]+self.size/4, self.rect[2], self.rect[3]-self.size/4)
-            self.prevPos = (self.prevPos[0], self.prevPos[1]+self.size/4, self.prevPos[2], self.prevPos[3]-self.size/4)
-        else:
-            self.crouching = False
-            self.crouchTimer = 0     
+        self.rect = changePos(self.rect, self.xVel, 0)
 
         if self.canMove:
             if pressedKeys[2]:
                 if not self.keysDown[2]:
                     self.keysDown[2] = True
-                    if self.crouching and (self.jumps[1] < self.jumps[0]) and self.currentAbility == [None, None]:
+                    if not self.crouching and not self.onGround and self.currentAbility == [None, None]:
                         self.currentAbility = ["gp", 0] #ground pound
                         self.yVel = 10*self.grav
             else:
                 self.keysDown[2] = False
 
-            if self.yVel <= 0 and self.currentAbility[0] == "gp":
-                if self.currentAbility[1] == 0:
-                    if GROUNDPOUND_BOUNCE:
-                        if pressedKeys[2]:
-                            self.yVel = -self.grav*8
-                        self.currentAbility = ["gp", 1]
-                    else:
+        continueCrouching = False
+        if self.crouching:
+            tempRect = pygame.Rect(self.rect[0], self.rect[1], self.rect[2], self.rect[3]-self.size/4)
+            for tiles in getNearbyTiles(self):
+                if continueCrouching:
+                    break
+                if tempRect.colliderect(tiles.rect):
+                    continueCrouching = True
+
+            for doors in currentMap.doors:
+                if continueCrouching:
+                    break
+                if tempRect.colliderect(doors.rect) and not doors.unlocked:
+                    continueCrouching = True
+
+            for buttons in currentMap.buttons:
+                if continueCrouching:
+                    break
+                if tempRect.colliderect(buttons.rect) or tempRect.colliderect(buttons.rect_button):
+                    continueCrouching = True
+
+
+        if self.yVel <= 0 and self.currentAbility[0] == "gp":
+            
+            if GROUNDPOUND_PREVENTCROUCH:
+                if self.keysDown[2]:
+                    self.currentAbility = ["gp", 1]
+                else:
                         self.currentAbility = [None, None]
-                elif self.currentAbility[1] == 1 and self.onGround:
-                    self.currentAbility = [None, None]
+            else:
+                self.currentAbility = [None, None]
+
+        if ((pressedKeys[2] and self.onGround) or continueCrouching) and not self.currentAbility == ["gp", 1]:
+            self.crouching = True
+            self.rect = pygame.FRect(self.rect[0], self.rect[1]+self.size/4, self.rect[2], self.rect[3]-self.size/4)
+            self.prevPos = pygame.FRect(self.prevPos[0], self.prevPos[1]+self.size/4, self.prevPos[2], self.prevPos[3]-self.size/4)
+        else:
+            self.crouching = False
+            self.crouchTimer = 0  
 
             if PLAYERCOLLISION == 1:
                 for player in playerList:
                     if player != self and not player.won:
                         self.playerCollide(player, 'x')
 
-        nearbyTiles = self.getNearbyTiles()
+        nearbyTiles = getNearbyTiles(self)
         for button in currentMap.buttons:
             if (button.rotation == 1 and self.xVel < 0) or (button.rotation == 3 and self.xVel > 0):
                 collide(self, button.rect_button, 'x')
@@ -1008,7 +1179,7 @@ class Player:
                             self.jump()
         else:
             self.keysDown[1] = False
-        self.changePos(0, self.yVel)
+        self.rect = changePos(self.rect, 0, self.yVel)
 
         if PLAYERCOLLISION == 1:
             for player in playerList:
@@ -1017,7 +1188,7 @@ class Player:
 
         self.onGround = False
 
-        nearbyTiles = self.getNearbyTiles()
+        nearbyTiles = getNearbyTiles(self)
         for button in currentMap.buttons:
             if button.rotation != 0:
                 collide(self, button.rect, 'y')
@@ -1034,6 +1205,13 @@ class Player:
                 obj.collide(self)
         for tile in nearbyTiles:
             collide(self, tile.rect, 'y')
+        for enemy in currentMap.enemies:
+            if not enemy.dead:
+                if self.rect.colliderect(enemy.rect) and (not self.onGround and self.yVel > 0):
+                    enemy.dead = True
+                    enemy.yVel = -currentMap.grav*8
+                    self.yVel = -self.yVel*0.8
+                    self.jumps[1] = 1
         if self.coyoteTime > 0:
             self.coyoteTime -= 1
 
@@ -1065,21 +1243,6 @@ class Player:
         if self.cameraPos[1] < -(len(currentMap.map))*TILESIZE+HEIGHT:
             self.offsetY += self.cameraPos[1]-(-(len(currentMap.map))*TILESIZE+HEIGHT)
             self.cameraPos = (self.cameraPos[0], -(len(currentMap.map))*TILESIZE+HEIGHT)
-
-    def getNearbyTiles(self):
-        global currentMap
-        nearbyTiles = []
-        xMin, xMax, yMin, yMax =  math.floor(self.rect[0]/TILESIZE-1), math.ceil(self.rect[0]/TILESIZE+2), math.floor(self.rect[1]/TILESIZE-1), math.ceil(self.rect[1]/TILESIZE+2)
-
-        for row in range(yMin, yMax):
-            for tile in range(xMin, xMax):
-                try:
-                    if currentMap.tiles[row][tile] != None and not currentMap.tiles[row][tile].bg:
-                        nearbyTiles.append(currentMap.tiles[row][tile])
-                except IndexError:
-                    pass
-
-        return nearbyTiles
 
     def remove(self):
         global playerList
@@ -1247,8 +1410,8 @@ class Player:
         currentMap.update(self)
 
         if self.crouching:
-            self.prevPos = (self.prevPos[0], self.prevPos[1]-self.size/4, self.prevPos[2], self.prevPos[3]+self.size/4)
-            self.rect = (self.rect[0], self.rect[1]-self.size/4, self.rect[2], self.rect[3]+self.size/4)
+            self.prevPos = pygame.FRect(self.prevPos[0], self.prevPos[1]-self.size/4, self.prevPos[2], self.prevPos[3]+self.size/4)
+            self.rect = pygame.FRect(self.rect[0], self.rect[1]-self.size/4, self.rect[2], self.rect[3]+self.size/4)
 
         for button in currentMap.buttons:
             button.update(self)
@@ -1264,6 +1427,26 @@ class Player:
         self.fade()
         self.drawUI()
 
+def setPos(rect, x, y):
+    return pygame.FRect(x, y, rect[2], rect[3])
+
+def changePos(rect, x, y):
+    return pygame.FRect(round(rect[0] + x, 2), round(rect[1] + y, 2), rect[2], rect[3])
+
+def getNearbyTiles(object):
+    global currentMap
+    nearbyTiles = []
+    xMin, xMax, yMin, yMax =  math.floor(object.rect[0]/TILESIZE-1), math.ceil((object.rect[0]+object.rect[2])/TILESIZE+1), math.floor(object.rect[1]/TILESIZE-1), math.ceil((object.rect[1]+object.rect[3])/TILESIZE+1)
+
+    for row in range(yMin, yMax):
+        for tile in range(xMin, xMax):
+            try:
+                if currentMap.tiles[row][tile] != None and not currentMap.tiles[row][tile].bg:
+                    nearbyTiles.append(currentMap.tiles[row][tile])
+            except IndexError:
+                pass
+
+    return nearbyTiles
 
 def getPlayerRect(player, offsets):
     global currentMap
@@ -1298,7 +1481,7 @@ def checkKeypress(keyList):
     return requestedKeys
 
 def update():
-    global playerList, screen
+    global playerList, currentMap
     clock.tick(FPS)
 
     screen.fill((255, 255, 255))
