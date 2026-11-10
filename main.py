@@ -126,13 +126,7 @@ def sideCollide(object, rect, side, offset=0):
                 rect1PrevSide, rect1Side, rect2Side = tempPrevPos.top, object.rect.top, rect.bottom
             case 3: #right
                 rect1PrevSide, rect1Side, rect2Side = tempPrevPos.left, object.rect.left, rect.right
-            case _:
-                return
-        match side:
-            case 0 | 1:
-                collided = rect1PrevSide <= rect2Side+offset and rect1Side >= rect2Side+offset
-            case 2 | 3:
-                collided = rect1PrevSide >= rect2Side+offset and rect1Side <= rect2Side+offset
+        collided = (rect1PrevSide <= rect2Side+offset and rect1Side >= rect2Side+offset) or (rect1PrevSide >= rect2Side+offset and rect1Side <= rect2Side+offset)
 
     return collided
 
@@ -821,7 +815,7 @@ class Map:
         for object in self.objects:
             try:
                 if int(object.attrib['gid']) == 28:
-                    self.spawnPos = (int(object.attrib['x']), int(object.attrib['y']))
+                    self.spawnPos = (float(object.attrib['x']), float(object.attrib['y']))
                     foundSpawn = True
                     break
             except KeyError:
@@ -870,14 +864,13 @@ class Map:
 
     def reset(self):
         global playerList
-        if len(playerList) == 1:
-            for coin in self.coins:
-                coin.got, coin.gotTimer = False, -1
-            playerList[0].coins = 0
-            for enemy in self.enemies:
-                enemy.reset()
-            for door in self.doors:
-                door.unlocked = door.defaultUnlocked
+        for coin in self.coins:
+            coin.got, coin.gotTimer = False, -1
+        playerList[0].coins = 0
+        for enemy in self.enemies:
+            enemy.reset()
+        for door in self.doors:
+            door.unlocked = door.defaultUnlocked
 
     def drawBG(self, player):
         player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640-640, 0))
@@ -953,7 +946,6 @@ class Player:
         self.dead = False
         self.deathType = ''
         self.scoreBonuses = [0, 0, 0, 0] #time, collectables, secret exit, perfect
-        currentMap.reset()
         self.canMove = True
         self.health = self.maxHP
         self.invuln = 0
@@ -1017,6 +1009,9 @@ class Player:
                 player.checkpoint = None
                 player.reset()
                 player.setFadeVars(FADE_O, FADE_T)
+                player.coins = 0
+            currentMap.reset()
+
             
 
     def die(self, deathType):
@@ -1042,6 +1037,7 @@ class Player:
         if self.deathTimer == 0:
             if len(playerList) == 1:
                 currentMap.mus.play()
+                currentMap.reset()
             self.reset()
 
     def hurt(self, object):
@@ -1077,6 +1073,9 @@ class Player:
         self.yVel = -self.grav*10*jumpMultiplier
         if self.currentAbility == ["gp", 1]:
             self.currentAbility = [None, None]
+        if self.currentAbility == ["wj", 0]:
+            self.currentAbility = ["wj", 1]
+            self.facing *= -1
 
     def setFadeVars(self, start, end):
         self.fadeTime = 0
@@ -1124,6 +1123,10 @@ class Player:
                     self.xVel = player.xVel*1.1
                 colliding = pygame.Rect(self.rect).colliderect(player.rect)
 
+    def singleKeyPress(self, keyIndex):
+        pressedKeys = checkKeypress(self.controls)
+        pressed, pressedKeys[keyIndex], self.keysDown[keyIndex] = singlePress(pressedKeys[keyIndex], self.keysDown[keyIndex])
+        return pressed
 
     def move(self):
         global currentMap, playerList
@@ -1131,19 +1134,50 @@ class Player:
         if self.canMove and self.invuln != -1:
 
             if pressedKeys[1]:
-                if self.coyoteTime > 0:
+                if self.coyoteTime > 0 and not self.currentAbility[0] == "wj":
                     self.facing = -1
-                xVelAdd = -self.speed/(self.speed+1)
+                move = True
+                if self.currentAbility[0] == "wj":
+                    if self.currentAbility[1] > 0:
+                        move = False
+                if move:
+                    xVelAdd = -self.speed/(self.speed+1)
+                else:
+                    xVelAdd = 0
                 if self.crouching:
                     xVelAdd = -0.2
             elif pressedKeys[3]:
-                if self.coyoteTime > 0:
+                if self.coyoteTime > 0 and not self.currentAbility[0] == "wj":
                     self.facing = 1
-                xVelAdd = self.speed/(self.speed+1)
+                move = True
+                if self.currentAbility[0] == "wj":
+                    if self.currentAbility[1] > 0:
+                        move = False
+                if move:
+                    xVelAdd = self.speed/(self.speed+1)
+                else:
+                    xVelAdd = 0
                 if self.crouching:
                     xVelAdd = 0.2
             else:
                 xVelAdd = 0
+
+            if self.currentAbility[0] == "wj":
+                tempX = self.rect.x
+                if self.currentAbility[1] == 0:
+                    if self.yVel >= 3:
+                        self.yVel = 3
+                    if self.singleKeyPress(0) and self.yVel == 3:
+                        self.jumps[1] == 0
+                        self.jump()
+                    if self.onGround:
+                        self.currentAbility = [None, None]
+                elif 1 <= self.currentAbility[1] <= 10:
+                    self.xVel = self.facing*10
+
+                    self.currentAbility[1] += 1
+                else:
+                    self.currentAbility = [None, None]
 
             self.xVel += xVelAdd
 
@@ -1175,6 +1209,7 @@ class Player:
         self.rect = changePos(self.rect, self.xVel, 0)
 
         if self.canMove:
+
             if pressedKeys[2]:
                 if not self.keysDown[2]:
                     self.keysDown[2] = True
@@ -1230,6 +1265,7 @@ class Player:
                         self.playerCollide(player, 'x')
 
         nearbyTiles = getNearbyTiles(self)
+
         for button in currentMap.buttons:
             if (button.rotation == 1 and self.xVel < 0) or (button.rotation == 3 and self.xVel > 0):
                 collide(self, button.rect_button, 'x')
@@ -1237,33 +1273,35 @@ class Player:
             else:
                 collide(self, button.rect, 'x')
                 collide(self, button.rect_button, 'x')
+
         for door in currentMap.doors:
             if not door.unlocked:
                 collide(self, door.rect, 'x')
+
+        wallCollide = False
         for tile in nearbyTiles:
-            if self.rect.colliderect(tile.rect):
-                print(self.rect.left, self.prevPos.left, tile.rect.right)
-            if (sideCollide(self, tile.rect, 1, offset=0) or sideCollide(self, tile.rect, 3, offset=0)):# and self.rect.colliderect(tile.rect):
-                if self.currentAbility == [None, None]:
-                    self.currentAbility = ["wj", 0]
+            if not wallCollide:
+                wallCollide = collide(self, tile.rect, 'x')
             else:
-                self.currentAbility = [None, None]
-            
-            collide(self, tile.rect, 'x')
+                collide(self, tile.rect, 'x')
+
+        if wallCollide and not self.onGround:
+            if self.currentAbility == [None, None]:
+                if pressedKeys[3]:
+                    self.facing = 1
+                elif pressedKeys[1]:
+                    self.facing = -1
+            if self.yVel >= 3 and self.currentAbility == [None, None]:         
+                self.currentAbility = ["wj", 0]
+                self.jumps[1] = 0
+        elif not(self.currentAbility[0] == "wj" and self.currentAbility[1] > 1):
+            self.currentAbility = [None, None]
 
         self.yVel += self.grav/2
 
-
-        if self.currentAbility[0] == "wj":
-            if True:
-                self.yVel = 0.5
-            elif self.yVel > 0.5:
-                self.currentAbility[1] += 1
-
-        if pressedKeys[0] and self.canMove:
-            if self.keysDown[1] == False:
-                self.keysDown[1] = True
-                if self.jumps[1] > 0:
+        if self.canMove and self.singleKeyPress(0) and self.invuln != -1:
+            if self.jumps[1] > 0:
+                if not self.currentAbility[0] == "wj":
                     if self.coyoteTime > 0 or self.jumps[0]-1 == self.jumps[1]:
                         self.jumps[1] -= 1
                         self.jump()
@@ -1271,8 +1309,6 @@ class Player:
                         if (self.jumps[1] == self.jumps[0]) and self.yVel > 0.5:
                             self.jumps[1] = 0
                             self.jump()
-        else:
-            self.keysDown[1] = False
         self.rect = changePos(self.rect, 0, self.yVel)
 
         if PLAYERCOLLISION == 1:
@@ -1470,11 +1506,11 @@ class Player:
             if player.currentAbility == ["gp", 0]:
                 sprite = (60, 80, 30, 40)
 
+            if player.currentAbility == ["wj", 0]:
+                sprite = (90, 120, 30, 40)
+
             if player.invuln == -1:
-                if ALT_DEATHSPRITE:
-                    sprite = (0, 120, 40, 40)
-                else:
-                    sprite = (40, 120, 30, 40)
+                sprite = (40, 120, 30, 40)
 
             if player.deathType != '':
                 sprite = (90, 40, 30, 40)
@@ -1520,6 +1556,7 @@ class Player:
         self.drawPlayer()
 
         self.prevPos = self.rect
+        
 
         if not self.won and self.deathType == '':
             self.timer += 1
@@ -1579,6 +1616,16 @@ def checkKeypress(keyList):
     for key in keyList:
         requestedKeys.append(keys[key])
     return requestedKeys
+
+def singlePress(key, bool):
+    press = False
+    if key:
+        if not bool:
+            bool = True
+            press = True
+    else:
+        bool = False
+    return press, key, bool
 
 def update():
     global playerList, currentMap
