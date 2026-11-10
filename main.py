@@ -1510,7 +1510,7 @@ class Player:
                 sprite = (90, 120, 30, 40)
 
             if player.invuln == -1:
-                sprite = (40, 120, 30, 40)
+                sprite = (0, 120, 30, 40)
 
             if player.deathType != '':
                 sprite = (90, 40, 30, 40)
