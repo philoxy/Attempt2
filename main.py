@@ -7,7 +7,10 @@ pygame.mixer.init()
 pygame.font.init()
 WIDTH = 640
 HEIGHT = 480
-screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED|pygame.RESIZABLE, vsync=1)
+CAM_WIDTH = 640
+CAM_HEIGHT = 480
+screen = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+display = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE, vsync=1)
 icon = pygame.image.load("assets/icon.png").convert_alpha()
 pygame.display.set_caption("Attempt 2")
 pygame.display.set_icon(icon)
@@ -18,7 +21,7 @@ font = pygame.font.Font('assets/95.otf', size=24)
 font_m = pygame.font.Font('assets/95.otf', size=32)
 font_l = pygame.font.Font('assets/95.otf', size=36)
 
-TILESIZE = 40
+TILESIZE = 40 # do NOT change
 FPS = 60
 FADE_O = 255 #opaque
 FADE_T = 0 #transparent
@@ -873,8 +876,9 @@ class Map:
             door.unlocked = door.defaultUnlocked
 
     def drawBG(self, player):
-        player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640-640, 0))
-        player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%640, 0))
+        tempBg = pygame.transform.scale(self.bg, (CAM_WIDTH, CAM_HEIGHT))
+        player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%CAM_WIDTH-CAM_WIDTH, 0))
+        player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%CAM_WIDTH, 0))
                     
     def update(self, player):
         self.drawBG(player)
@@ -901,8 +905,8 @@ class Player:
         self.checkpoint = None
         self.maxHP = 3
         self.reset()
-        self.camera = pygame.Surface((WIDTH, HEIGHT), pygame.SCALED)
-        self.fadeLayer = pygame.Surface((WIDTH,HEIGHT), pygame.SRCALPHA)
+        self.camera = pygame.Surface((CAM_WIDTH, CAM_HEIGHT), pygame.SCALED)
+        self.fadeLayer = pygame.Surface((CAM_WIDTH, CAM_HEIGHT), pygame.SRCALPHA)
         self.fadeLayer.fill((0,0,0,255))
         self.fadeLayer.set_alpha(0)
         self.controls = []
@@ -933,7 +937,7 @@ class Player:
         self.spawnPoint = self.lastCheckpoint
         self.rect = pygame.Rect(self.lastCheckpoint[0], self.lastCheckpoint[1], int(self.size*0.6), int(self.size*0.75))
         self.prevPos = self.rect
-        self.cameraPos = (-self.rect[0]+(WIDTH/2-20), -self.rect[1]-TILESIZE+(HEIGHT/2-20))
+        self.cameraPos = (-self.rect[0]+(CAM_WIDTH/2-20), -self.rect[1]-TILESIZE+(CAM_HEIGHT/2-20))
         self.xVel = 0
         self.yVel = 0
         self.grav = 1
@@ -1291,7 +1295,7 @@ class Player:
                     self.facing = 1
                 elif pressedKeys[1]:
                     self.facing = -1
-            if self.yVel >= 3 and self.currentAbility == [None, None]:         
+            if self.yVel >= 10 and self.currentAbility == [None, None]:         
                 self.currentAbility = ["wj", 0]
                 self.jumps[1] = 0
         elif not(self.currentAbility[0] == "wj" and self.currentAbility[1] > 1):
@@ -1346,10 +1350,10 @@ class Player:
 
     def cameraMove(self):
         global currentMap
-        rightCameraBorder = self.rect[0]+int(self.size*3/4) > WIDTH*0.6-self.cameraPos[0] and self.xVel > 0.75 and self.cameraPos[0] > -(len(currentMap.map[0]))*TILESIZE+WIDTH
-        leftCameraBorder = self.rect[0] < WIDTH*0.4-self.cameraPos[0] and self.xVel < -0.75 and self.cameraPos[0] < 0
-        topCameraBorder = self.rect[1] < HEIGHT*0.4-self.cameraPos[1] and self.yVel < -0.75 and self.cameraPos[1] < 0
-        bottomCameraBorder = self.rect[1]+self.size > HEIGHT*0.6-self.cameraPos[1] and self.yVel > 0.75 and self.cameraPos[1] > -(len(currentMap.map))*TILESIZE+HEIGHT
+        rightCameraBorder = self.rect[0]+int(self.size*3/4) > CAM_WIDTH*0.6-self.cameraPos[0] and self.xVel > 0.75 and self.cameraPos[0] > -(len(currentMap.map[0]))*TILESIZE+CAM_WIDTH
+        leftCameraBorder = self.rect[0] < CAM_WIDTH*0.4-self.cameraPos[0] and self.xVel < -0.75 and self.cameraPos[0] < 0
+        topCameraBorder = self.rect[1] < CAM_HEIGHT*0.4-self.cameraPos[1] and self.yVel < -0.75 and self.cameraPos[1] < 0
+        bottomCameraBorder = self.rect[1]+self.size > CAM_HEIGHT*0.6-self.cameraPos[1] and self.yVel > 0.75 and self.cameraPos[1] > -(len(currentMap.map))*TILESIZE+CAM_HEIGHT
 
         if leftCameraBorder or rightCameraBorder:
             self.cameraPos = (self.cameraPos[0]-(self.rect[0]-self.prevPos[0]), self.cameraPos[1])
@@ -1362,16 +1366,16 @@ class Player:
         if self.cameraPos[0] > 0:
             self.offsetX += self.cameraPos[0]
             self.cameraPos = (0, self.cameraPos[1])
-        if self.cameraPos[0] < -(len(currentMap.map[0]))*TILESIZE+WIDTH:
-            self.offsetX += self.cameraPos[0]-(-(len(currentMap.map[0]))*TILESIZE+WIDTH)
-            self.cameraPos = (-(len(currentMap.map[0]))*TILESIZE+WIDTH, self.cameraPos[1])
+        if self.cameraPos[0] < -(len(currentMap.map[0]))*TILESIZE+CAM_WIDTH:
+            self.offsetX += self.cameraPos[0]-(-(len(currentMap.map[0]))*TILESIZE+CAM_WIDTH)
+            self.cameraPos = (-(len(currentMap.map[0]))*TILESIZE+CAM_WIDTH, self.cameraPos[1])
 
         if self.cameraPos[1] > 0:
             self.offsetY += self.cameraPos[1]
             self.cameraPos = (self.cameraPos[0], 0)
-        if self.cameraPos[1] < -(len(currentMap.map))*TILESIZE+HEIGHT:
-            self.offsetY += self.cameraPos[1]-(-(len(currentMap.map))*TILESIZE+HEIGHT)
-            self.cameraPos = (self.cameraPos[0], -(len(currentMap.map))*TILESIZE+HEIGHT)
+        if self.cameraPos[1] < -(len(currentMap.map))*TILESIZE+CAM_HEIGHT:
+            self.offsetY += self.cameraPos[1]-(-(len(currentMap.map))*TILESIZE+CAM_HEIGHT)
+            self.cameraPos = (self.cameraPos[0], -(len(currentMap.map))*TILESIZE+CAM_HEIGHT)
 
     def getTime(self):
         sec = math.floor(self.timer/60)%60
@@ -1397,7 +1401,7 @@ class Player:
             helth, helth_rect = drawText(f'HP: {self.health}/{self.maxHP}')
 
             timer_rect.topleft = (10, 10)
-            score_rect.topright = (WIDTH-10, 10)
+            score_rect.topright = (CAM_WIDTH-10, 10)
             coins_rect.topleft = (10, 40)
             helth_rect.topleft = (10, 70)
 
@@ -1419,8 +1423,8 @@ class Player:
                 waiting, waiting_rect = drawText(f'Waiting for players...', font=font_l)
                 playersWon, playersWon_rect = drawText(f'{winners}/{len(playerList)}')
 
-                waiting_rect.center = (WIDTH/2, HEIGHT/3)
-                playersWon_rect.center = (WIDTH/2, HEIGHT/7*3)
+                waiting_rect.center = (CAM_WIDTH/2, CAM_HEIGHT/3)
+                playersWon_rect.center = (CAM_WIDTH/2, CAM_HEIGHT/7*3)
 
                 self.camera.blit(waiting, waiting_rect)
                 self.camera.blit(playersWon, playersWon_rect)
@@ -1432,31 +1436,31 @@ class Player:
                     delay1, delay2, delay3 = 40, 50, 120
                 self.camera.blit(self.fadeLayer)
                 youwin, youwin_rect = drawText('You Won!', font=font_l)
-                youwin_rect.center = (WIDTH/2, pygame.math.lerp(-200, HEIGHT/8, ease(self.winTimer/30)))
+                youwin_rect.center = (CAM_WIDTH/2, pygame.math.lerp(-200, CAM_HEIGHT/8, ease(self.winTimer/30)))
                 self.camera.blit(youwin, youwin_rect)
 
                 finalTime, finalTime_rect = drawText(f'Final Time: {self.getTime()}', font_m)
-                finalTime_rect.center = (pygame.math.lerp(-200, WIDTH/2, (self.winTimer-delay1)/30), HEIGHT*2/8)
+                finalTime_rect.center = (pygame.math.lerp(-200, CAM_WIDTH/2, (self.winTimer-delay1)/30), CAM_HEIGHT*2/8)
                 self.camera.blit(finalTime, finalTime_rect)
 
                 score, score_rect = drawText(f'Score: {self.score}', font_m)
-                score_rect.center = (pygame.math.lerp(-200, WIDTH/2, (self.winTimer-delay2)/30), HEIGHT*3/8)
+                score_rect.center = (pygame.math.lerp(-200, CAM_WIDTH/2, (self.winTimer-delay2)/30), CAM_HEIGHT*3/8)
                 self.camera.blit(score, score_rect)  
 
                 timeBonus, timeBonus_rect = drawText(f'Time Bonus: {self.scoreBonuses[0]}', font_s)
-                timeBonus_rect.center = (WIDTH/2, HEIGHT/14*9)
+                timeBonus_rect.center = (CAM_WIDTH/2, CAM_HEIGHT/14*9)
                 self.camera.blit(timeBonus, timeBonus_rect)
 
                 secretExit, secretExit_rect = drawText(f'Secret Exit Bonus: {self.scoreBonuses[1]}', font_s)
-                secretExit_rect.center = (WIDTH/2, HEIGHT/14*10-10)
+                secretExit_rect.center = (CAM_WIDTH/2, CAM_HEIGHT/14*10-10)
                 self.camera.blit(secretExit, secretExit_rect)
 
                 coinBonus, coinBonus_rect = drawText(f'CD Bonus: {self.scoreBonuses[2]}', font_s)   
-                coinBonus_rect.center = (WIDTH/2, HEIGHT/14*11-20)
+                coinBonus_rect.center = (CAM_WIDTH/2, CAM_HEIGHT/14*11-20)
                 self.camera.blit(coinBonus, coinBonus_rect)
 
                 perfectBonus, perfectBonus_rect = drawText(f'Perfect Bonus: {self.scoreBonuses[3]}', font_s)
-                perfectBonus_rect.center = (WIDTH/2, HEIGHT/14*12-30)
+                perfectBonus_rect.center = (CAM_WIDTH/2, CAM_HEIGHT/14*12-30)
                 self.camera.blit(perfectBonus, perfectBonus_rect)
 
                 if checkKeypress([pygame.K_RETURN])[0] and any(self.scoreBonuses) and self.winTimer > delay3:
@@ -1587,7 +1591,7 @@ def getNearbyTiles(object):
 
 def getPlayerRect(player, offsets):
     global currentMap
-    return (round(player.rect[0]-offsets[0]+(WIDTH/2-20), 2), round(player.rect[1]-offsets[1]+(HEIGHT/2-20), 2), player.rect[2], player.rect[3])
+    return (round(player.rect[0]-offsets[0]+(CAM_WIDTH/2-20), 2), round(player.rect[1]-offsets[1]+(CAM_HEIGHT/2-20), 2), player.rect[2], player.rect[3])
 
 def drawText(textStr, font=font):
     text = font.render(textStr, False, (255, 255, 255))
@@ -1598,16 +1602,16 @@ def drawCamera():
     global playerList
     players = len(playerList)
     if players == 1:
-        screen.blit(playerList[0].camera)
+        screen.blit(pygame.transform.scale(playerList[0].camera, (WIDTH, HEIGHT)))
     elif players == 2:
         for player in range(len(playerList)):
-            screen.blit(pygame.transform.scale_by(playerList[player].camera, 0.5), dest=(WIDTH/4, HEIGHT/2*player))
+            screen.blit(pygame.transform.scale(playerList[player].camera, (WIDTH, HEIGHT*0.5)), dest=(0, HEIGHT/2*player))
     elif players == 3:
         for player in range(len(playerList)):
-            screen.blit(pygame.transform.scale_by(playerList[player].camera, 0.5), dest=(WIDTH/4*player, HEIGHT/2*(player%2)))
+            screen.blit(pygame.transform.scale(playerList[player].camera, (WIDTH*0.5, HEIGHT*0.5)), dest=(WIDTH/4*player, HEIGHT/2*(player%2)))
     elif players == 4:
         for player in range(len(playerList)):
-            screen.blit(pygame.transform.scale_by(playerList[player].camera, 0.5), dest=(WIDTH/2*(player%2), HEIGHT/2*math.floor(player/2)))
+            screen.blit(pygame.transform.scale(playerList[player].camera, (WIDTH*0.5, HEIGHT*0.5)), dest=(WIDTH/2*(player%2), HEIGHT/2*math.floor(player/2)))
 
 
 def checkKeypress(keyList):
@@ -1638,6 +1642,10 @@ def update():
     
     drawCamera()
 
+    screen2 = pygame.transform.scale(screen, display.get_size())
+
+    display.blit(screen2)
+
     pygame.display.flip()
 
 currentMap = Map('assets/levels/lv1')
@@ -1649,8 +1657,13 @@ P2 = Player([pygame.K_UP, pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT], 'donnie
 P3 = Player([pygame.K_t, pygame.K_f, pygame.K_g, pygame.K_h], 'soday')
 P4 = Player([pygame.K_i, pygame.K_j, pygame.K_k, pygame.K_l], 'soday')
 
-def setPlayerList():
+def setPlayerList(players):
     global playerList
+    if 1 <= players <= 4:
+        PLAYERS = players
+    else:
+        print(f'invalid player amount: {players}')
+        return
     playerList = []
     if PLAYERS >= 1:
         playerList.append(P1)
@@ -1661,7 +1674,7 @@ def setPlayerList():
     if PLAYERS >= 4:
         playerList.append(P4)
 
-setPlayerList()
+setPlayerList(PLAYERS)
 
 run = True
 
