@@ -16,23 +16,47 @@ pygame.display.set_caption("Attempt 2")
 pygame.display.set_icon(icon)
 clock = pygame.time.Clock()
 
-font_s = pygame.font.Font('assets/95.otf')
-font = pygame.font.Font('assets/95.otf', size=24)
-font_m = pygame.font.Font('assets/95.otf', size=32)
-font_l = pygame.font.Font('assets/95.otf', size=36)
+font_s = pygame.font.Font('assets/font/95.otf')
+font = pygame.font.Font('assets/font/95.otf', size=24)
+font_m = pygame.font.Font('assets/font/95.otf', size=32)
+font_l = pygame.font.Font('assets/font/95.otf', size=36)
 
-TILESIZE = 40 # do NOT change
+font2_l = pygame.font.Font('assets/font/s1.otf', size=40)
+font2_xl = pygame.font.Font('assets/font/s1.otf', size=70)
+
+prevKeys = [False for _ in range(len(pygame.key.get_pressed()))]
+
+TILESIZE = 40 #do NOT change
 FPS = 60
 FADE_O = 255 #opaque
 FADE_T = 0 #transparent
 PLAYERS = 1
+
+SECOND = 60
 MINUTE = 3600
+
+class states:
+    PLAYING = 0
+    PAUSED = 1
+    MENU = 2
+
+GAMESTATE = states.PLAYING
+
+class menus:
+    PAUSE = 0
+    OPTION = 1
+    RETRY = 2
+
+fadeLayer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+fadeLayer.fill((0,0,0, 255))
+fadeTime, fadeStart, fadeEnd = 0, FADE_T, FADE_T
+
+#debug/unused settings
 SHOWHITBOXES = 0
-PLAYERCOLLISION = 0
+PLAYERCOLLISION = 0 #broken
 CLEARMUS = 0
-GROUNDPOUND_BOUNCE = 0
-GROUNDPOUND_PREVENTCROUCH = 0
-ALT_DEATHSPRITE = 0
+GROUNDPOUND_BOUNCE = 0 #does not work
+GROUNDPOUND_PREVENTCROUCH = 0 #does not work
 
 def loadimg(img):
     return pygame.image.load(img).convert_alpha()
@@ -42,6 +66,9 @@ img_flag = loadimg('assets/flags.png')
 img_rock = loadimg('assets/tilesets/rock.png')
 #img_grass = loadimg('assets/tilesets/grass.png')
 img_coin = loadimg('assets/collectables.png')
+
+img_cursor = loadimg('assets/cursor.png')
+img_note = loadimg('assets/note.png')
 
 snd_spring = pygame.mixer.Sound('assets/sfx/spring.mp3')
 snd_spike = pygame.mixer.Sound('assets/sfx/death.mp3')
@@ -130,9 +157,18 @@ def sideCollide(object, rect, side, offset=0):
             case 3: #right
                 rect1PrevSide, rect1Side, rect2Side = tempPrevPos.left, object.rect.left, rect.right
         collided = (rect1PrevSide <= rect2Side+offset and rect1Side >= rect2Side+offset) or (rect1PrevSide >= rect2Side+offset and rect1Side <= rect2Side+offset)
-
     return collided
 
+def setFadeVars(start, end):
+    global fadeTime, fadeStart, fadeEnd
+    fadeTime = 0
+    fadeStart, fadeEnd = start, end
+
+def fade():
+    global fadeTime, fadeStart, fadeEnd
+    fadeLayer.set_alpha(pygame.math.lerp(fadeStart, fadeEnd, ease(fadeTime)))
+    fadeTime += 1/FPS*2
+    fadeTime = round(fadeTime, 2)
 
 #objects
 class Spring:
@@ -144,15 +180,15 @@ class Spring:
         self.rotation = rotation
         match rotation:
             case 0:
-                x, y, w, h = 0, TILESIZE-25, TILESIZE, 25
+                x, y, w, h = 0, TILESIZE-25, TILESIZE, 15
             case 1:
-                x, y, w, h = 0, 0, 25, TILESIZE
+                x, y, w, h = 10, 0, 15, TILESIZE
                 self.pos = (self.pos[0], self.pos[1]+TILESIZE)
             case 2:
-                x, y, w, h = 0, 0, TILESIZE, 25
+                x, y, w, h = 0, 10, TILESIZE, 15
                 self.pos = (self.pos[0]-TILESIZE, self.pos[1]+TILESIZE)
             case 3:
-                x, y, w, h = TILESIZE-25, 0, 25, TILESIZE
+                x, y, w, h = TILESIZE-25, 0, 15, TILESIZE
                 self.pos = (self.pos[0]-TILESIZE, self.pos[1])
         self.rect = pygame.Rect(self.pos[0]+x, self.pos[1]+y, w, h)
 
@@ -186,7 +222,7 @@ class Spring:
             self.activateTimer = 30
 
 
-    def update(self, player=None):
+    def draw(self, player=None):
         global playerList
 
         if self.activateTimer > 0:
@@ -220,7 +256,7 @@ class Goal:
         if self.rect.colliderect(player.rect) and player.deathType == '' or player.won == self.type:
             player.win(self.type)
 
-    def update(self, player):
+    def draw(self, player):
         player.camera.blit(img_flag, dest=(int(player.cameraPos[0])+self.pos[0], int(player.cameraPos[1])+self.pos[1]), area=(self.sprite[0], self.frame*(TILESIZE*1.5), self.sprite[2], self.sprite[3]))
         self.collide(player)
         self.anim += 1
@@ -258,23 +294,21 @@ class Spike:
                 if object.deathType == '' and (object.deathType == '' or not object.won):
                     object.hurt(self)
 
-    def update(self, player):
+    def draw(self, player):
         player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.pos[0], int(player.cameraPos[1])+self.pos[1]))
         if SHOWHITBOXES:
             pygame.draw.rect(player.camera, (255, 255, 0), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
 
-        self.collide(player)
-
 class Text:
     def __init__(self, x, y, text, fontsize):
-        tempFont = pygame.font.Font('assets/95.otf', int(fontsize))
-        self.text, self.text_rect = drawText(text, tempFont)
-        self.text_rect.topleft = (float(x), float(y)+TILESIZE)
+        tempFont = pygame.font.Font('assets/font/95.otf', int(fontsize))
+        self.text, self.rect = drawText(text, tempFont)
+        self.rect.topleft = (float(x), float(y)+TILESIZE)
 
-    def update(self, player):
+    def draw(self, player):
         global playerList
         if len(playerList) == 1:
-            player.camera.blit(self.text, dest=(int(player.cameraPos[0])+self.text_rect[0], int(player.cameraPos[1])+self.text_rect[1] ))
+            player.camera.blit(self.text, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1] ))
 
 class Checkpoint:
     def __init__(self, x, y):
@@ -286,6 +320,8 @@ class Checkpoint:
             player.checkpoint = self
             player.lastCheckpoint = (self.rect[0], self.rect[1])
             player.health = player.maxHP
+
+    def draw(self, player):
         if player.checkpoint == self:
             self.sprite = (160, 0, 40, 40)
         else:
@@ -311,16 +347,16 @@ class Door:
         for player in playerList:
             if player.canMove:
                 rects.append(player.rect)
-        for enemy in currentMap.enemies:
-            if not enemy.dead:
-                rects.append(enemy.rect)
+        for objects in getNearbyObjects(self.rect):
+            if isinstance(objects, Enemy) and not objects.dead:
+                rects.append(objects.rect)
         for rect in rects:
             if rect.colliderect(tempRect):
                 collided = True
                 break
         return collided
 
-    def update(self, player):
+    def draw(self, player):
         if not self.unlocked:
             self.image.fill(self.color)
             self.sprite = (TILESIZE*2, TILESIZE, TILESIZE, TILESIZE)
@@ -394,20 +430,7 @@ class Button:
 
     def update(self, player):
         global currentMap, playerList
-        if not self.pressed:
-            self.sprite = (0, TILESIZE, TILESIZE, TILESIZE)
-            #self.rect_button = self.buttonrect
-            self.sprite_rect_button = self.sprite_buttonrect
-        else:
-            self.sprite = (TILESIZE, TILESIZE, TILESIZE, TILESIZE)
-            self.rect_button = self.buttonrect_pressed
-            self.sprite_rect_button = self.sprite_buttonrect_pressed
 
-        self.image.fill((0,0,0,0))
-        self.image.blit(img_obj, area=self.sprite)
-        self.image.fill(self.color, special_flags=pygame.BLEND_RGB_MULT)
-        self.image.blit(img_obj, area=(TILESIZE*4, TILESIZE, TILESIZE, TILESIZE))
-        self.image = pygame.transform.rotate(self.image, -self.rotation*90)
         collided = False
         for p in playerList:
             if p.rect.colliderect(self.press_buttonrect):
@@ -446,6 +469,23 @@ class Button:
             self.pressing = False
             self.pressed = False
 
+    def draw(self, player):
+
+        if not self.pressed:
+            self.sprite = (0, TILESIZE, TILESIZE, TILESIZE)
+            #self.rect_button = self.buttonrect
+            self.sprite_rect_button = self.sprite_buttonrect
+        else:
+            self.sprite = (TILESIZE, TILESIZE, TILESIZE, TILESIZE)
+            self.rect_button = self.buttonrect_pressed
+            self.sprite_rect_button = self.sprite_buttonrect_pressed
+
+        self.image.fill((0,0,0,0))
+        self.image.blit(img_obj, area=self.sprite)
+        self.image.fill(self.color, special_flags=pygame.BLEND_RGB_MULT)
+        self.image.blit(img_obj, area=(TILESIZE*4, TILESIZE, TILESIZE, TILESIZE))
+        self.image = pygame.transform.rotate(self.image, -self.rotation*90)
+
         player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.imagePos[0], int(player.cameraPos[1])+self.imagePos[1]-TILESIZE+5))
         if SHOWHITBOXES:
             pygame.draw.rect(player.camera, (0, 0, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
@@ -461,13 +501,7 @@ class Collectable:
         self.frame = 0
         self.image = pygame.Surface((30, 30), pygame.SRCALPHA)
 
-    def update(self, player):
-        global playerList
-        self.anim += 1
-        if self.anim > 169:
-            self.anim = 0
-        self.frame = math.floor(self.anim/20)
-
+    def draw(self, player):
         if self.gotTimer == -1:
             self.sprite = (-(self.frame%4*30), 0, 30, 30)
         elif self.gotTimer > 0:
@@ -478,19 +512,30 @@ class Collectable:
 
         self.image.fill((0,0,0,0))
         self.image.blit(img_coin, self.sprite)
+
         if 4 <= self.frame <= 7 and self.gotTimer == 0:
             self.image = pygame.transform.flip(self.image, True, False)
+            
+        if not(self.gotTimer == 0):
+            player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]))
+            if SHOWHITBOXES:
+                pygame.draw.rect(player.camera, (200, 200, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
+
+
+    def update(self):
+        self.anim += 1
+        if self.anim > 169:
+            self.anim = 0
+        self.frame = math.floor(self.anim/20)
+
+    def collide(self, player):
+        global playerList
 
         if self.rect.colliderect(pygame.Rect(player.rect)) and self.gotTimer == -1 and (player.deathType == '' and not player.won):
             snd_twinkle.play()
-            for p in playerList:
-                p.coins += 1
+            for players in playerList:
+                players.coins += 1
             self.gotTimer = 7
-
-        if not(self.gotTimer == 0):
-            player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]))
-        if SHOWHITBOXES:
-            pygame.draw.rect(player.camera, (200, 200, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
             
 class Bridge:
     def __init__(self, x, y):
@@ -498,7 +543,7 @@ class Bridge:
 
     def collide(self, player):
         if isinstance(player, Player):
-            if self.rect.colliderect(pygame.Rect(player.rect)) and not checkKeypress([player.controls[1]])[0] and not checkKeypress([player.controls[3]])[0]:
+            if self.rect.colliderect(pygame.Rect(player.rect)) and not keyPress(player.controls[1]) and not keyPress(player.controls[3]):
                 player.crouchTimer += 1
             collision = True
             if player.crouchTimer > 30:
@@ -510,7 +555,7 @@ class Bridge:
         if player.prevPos[1]+player.prevPos[3] <= self.rect[1]+1 and player.rect[1]+player.rect[3] >= self.rect[1] and collision:
             collide(player, self.rect, 'y')
 
-    def update(self, player):
+    def draw(self, player):
         player.camera.blit(img_obj, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]), area=(160, 80, 40, 40))
         if SHOWHITBOXES:
             pygame.draw.rect(player.camera, (200, 200, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
@@ -626,19 +671,19 @@ class Enemy:
             self.speed = 0.5
             self.rect = pygame.Rect(self.originalPos[0], self.originalPos[1]-30, 40, 30)
         self.prevPos = self.rect
+
+    def draw(self, player):
+        player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]))
+        if SHOWHITBOXES:
+            pygame.draw.rect(player.camera, (200, 200, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
         
-    def update(self, player):
+    def update(self):
         if not(self.rect[1] > (len(currentMap.map)+2)*TILESIZE and self.dead):
             match self.type:
                 case "evilbrick":
                     enemymove_normal(self)
 
-            player.camera.blit(self.image, dest=(int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1]))
-            if SHOWHITBOXES:
-                pygame.draw.rect(player.camera, (200, 200, 255), (int(player.cameraPos[0])+self.rect[0], int(player.cameraPos[1])+self.rect[1], self.rect[2], self.rect[3]))
             self.prevPos = self.rect
-
-
 
 #not objects
 class Tile:
@@ -657,10 +702,9 @@ class Map:
             mus_info = f'{mus_md[0]} - {mus_md[1]}'
             mus_info = ''.join(mus_info.splitlines())
         mus_info, mus_info_rect = drawText(f'{mus_info}', font=font_s)
-        note = loadimg('assets/note.png')
         self.musPopup = pygame.Surface((22+mus_info_rect[2]+2,mus_info_rect[3]), pygame.SRCALPHA)
         self.musPopup.fill((0,0,0,50))
-        self.musPopup.blit(note, dest=(1, 1))
+        self.musPopup.blit(img_note, dest=(1, 1))
         self.musPopup.blit(mus_info, dest=(22, 1))
         self.musPopupTimer = 0
         self.musPopupPos = 0
@@ -755,13 +799,13 @@ class Map:
                             self.buttons.append(tempButton)
                     case 33: #locked door
                         tempDoor = Door(x, y, int(object.attrib["id"]))
-                        self.objects.append(tempDoor)
+                        #self.objects.append(tempDoor)
                         self.doors.append(tempDoor)
                     case 34: #unlocked door
                         tempDoor = Door(x, y, int(object.attrib["id"]))
                         tempDoor.unlocked = True
                         tempDoor.defaultUnlocked = True
-                        self.objects.append(tempDoor)
+                        #self.objects.append(tempDoor)
                         self.doors.append(tempDoor)
                     case 35: #collectable
                         self.coins.append(Collectable(x, y))
@@ -880,16 +924,12 @@ class Map:
         player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%CAM_WIDTH-CAM_WIDTH, 0))
         player.camera.blit(self.bg, dest=((player.cameraPos[0]/4)%CAM_WIDTH, 0))
                     
-    def update(self, player):
+    def drawObjects(self, player):
         self.drawBG(player)
         player.camera.blit(self.bgmapsurf, dest=player.cameraPos)
         player.camera.blit(self.mapsurf, dest=player.cameraPos)
-        for object in self.objects:
-            object.update(player)
-        for coin in self.coins:
-            coin.update(player)
-        for enemy in self.enemies:
-            enemy.update(player)
+        for object in getNearbyObjects(player):
+            object.draw(player)
         if self.musPopupTimer < 210 and PLAYERS == 1:
             self.musPopupTimer += 1
             if self.musPopupTimer <= 30:
@@ -897,6 +937,19 @@ class Map:
             elif self.musPopupTimer >= 180:
                 self.musPopupPos = ((self.musPopupTimer-150)/30-1)*-self.musPopup.get_width()
             player.camera.blit(self.musPopup, (self.musPopupPos, HEIGHT-40))
+
+    def update(self):
+        for player in playerList:
+            for object in getNearbyObjects(player):
+                if isinstance(object, Checkpoint) or isinstance(object, Button):
+                    object.update(player)
+                if isinstance(object, Collectable):
+                    object.collide(player)
+        for coin in self.coins:
+            coin.update()
+        for enemy in self.enemies:
+            enemy.update()
+
 
 class Player:
     def __init__(self, controls, char):
@@ -965,7 +1018,7 @@ class Player:
                 pygame.draw.rect(self.camera, (255, 0, 0), tempRect)
 
     def win(self, exitType):
-        global playerList, currentMap
+        global playerList, currentMap, menu
         if not self.won:
             if self.crouching:
                 self.prevPos = pygame.FRect(self.prevPos[0], self.prevPos[1]-self.size/4, self.prevPos[2], self.prevPos[3]+self.size/4)
@@ -990,6 +1043,9 @@ class Player:
             if self.won == 'secret':
                 self.scoreBonuses[1] = 1000
             self.canMove = False
+
+        if self.won and menu.type != None and len(playerList) == 1:
+            menu.type = None
             
         allWon = True
         for player in playerList:
@@ -1016,8 +1072,6 @@ class Player:
                 player.coins = 0
             currentMap.reset()
 
-            
-
     def die(self, deathType):
         global playerList
         if len(playerList) == 1:
@@ -1032,10 +1086,13 @@ class Player:
                 snd_fall.stop()
                 snd_fall.play()
                 self.deathTimer = FPS
+            elif deathType == 'reset':
+                self.deathTimer = FPS
             self.deathType = deathType
         if self.deathTimer == FPS:
-            self.fadeTime = 0
             self.setFadeVars(FADE_T, FADE_O)
+            if self.deathType == 'reset':
+                self.deathTimer = 30
         self.deathTimer -= 1
 
         if self.deathTimer == 0:
@@ -1098,9 +1155,9 @@ class Player:
             else:
                 changeX = -0.5
             if colliding:
-                if self.xVel > 0 and not checkKeypress([player.controls[3]])[0]:
+                if self.xVel > 0 and not keyPress(player.controls[3]):
                     player.xVel = 2
-                elif self.xVel < 0 and not checkKeypress([player.controls[1]])[0]:
+                elif self.xVel < 0 and not keyPress(player.controls[1]):
                     player.xVel = -2
             while colliding:
                 self.rect = changePos(self.rect, changeX, 0)
@@ -1123,21 +1180,15 @@ class Player:
                 if self.yVel > 0:
                     self.jumps[1] = self.jumps[0]
                 self.yVel = 0
-                if abs(player.xVel) > 0.5 and not checkKeypress([self.controls[1]])[0] and not checkKeypress([self.controls[3]])[0]:
+                if abs(player.xVel) > 0.5 and not keyPress(self.controls[1]) and not keyPress(self.controls[3]):
                     self.xVel = player.xVel*1.1
                 colliding = pygame.Rect(self.rect).colliderect(player.rect)
 
-    def singleKeyPress(self, keyIndex):
-        pressedKeys = checkKeypress(self.controls)
-        pressed, pressedKeys[keyIndex], self.keysDown[keyIndex] = singlePress(pressedKeys[keyIndex], self.keysDown[keyIndex])
-        return pressed
-
     def move(self):
         global currentMap, playerList
-        pressedKeys = checkKeypress(self.controls)
         if self.canMove and self.invuln != -1:
 
-            if pressedKeys[1]:
+            if keyPress(self.controls[1]):
                 if self.coyoteTime > 0 and not self.currentAbility[0] == "wj":
                     self.facing = -1
                 move = True
@@ -1150,7 +1201,7 @@ class Player:
                     xVelAdd = 0
                 if self.crouching:
                     xVelAdd = -0.2
-            elif pressedKeys[3]:
+            elif keyPress(self.controls[3]):
                 if self.coyoteTime > 0 and not self.currentAbility[0] == "wj":
                     self.facing = 1
                 move = True
@@ -1171,8 +1222,8 @@ class Player:
                 if self.currentAbility[1] == 0:
                     if self.yVel >= 3:
                         self.yVel = 3
-                    if self.singleKeyPress(0) and self.yVel == 3:
-                        self.jumps[1] == 0
+                    if keyPress_single(self.controls[0]) and self.yVel == 3:
+                        self.jumps[1] = 0
                         self.jump()
                     if self.onGround:
                         self.currentAbility = [None, None]
@@ -1214,18 +1265,14 @@ class Player:
 
         if self.canMove:
 
-            if pressedKeys[2]:
-                if not self.keysDown[2]:
-                    self.keysDown[2] = True
-                    if not self.crouching and not self.onGround and self.currentAbility == [None, None]:
-                        self.currentAbility = ["gp", 0] #ground pound
-                        self.yVel = 10*self.grav
-            else:
-                self.keysDown[2] = False
+            if keyPress_single(self.controls[2]):
+                if not self.crouching and not self.onGround and (self.currentAbility == [None, None] or self.currentAbility == ["wj", 0]):
+                    self.currentAbility = ["gp", 0] #ground pound
+                    self.yVel = 10*self.grav
 
         continueCrouching = False
         if self.crouching:
-            tempRect = pygame.Rect(self.rect[0], self.rect[1], self.rect[2], self.rect[3]-self.size/4)
+            tempRect = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, self.rect.height-self.size/4)
             for tiles in getNearbyTiles(self):
                 if continueCrouching:
                     break
@@ -1255,7 +1302,7 @@ class Player:
             else:
                 self.currentAbility = [None, None]
 
-        if ((pressedKeys[2] and self.onGround) or continueCrouching) and not self.currentAbility == ["gp", 1]:
+        if ((keyPress(self.controls[2]) and self.onGround) or continueCrouching) and not self.currentAbility[0] == "gp":
             self.crouching = True
             self.rect = pygame.FRect(self.rect[0], self.rect[1]+self.size/4, self.rect[2], self.rect[3]-self.size/4)
             self.prevPos = pygame.FRect(self.prevPos[0], self.prevPos[1]+self.size/4, self.prevPos[2], self.prevPos[3]-self.size/4)
@@ -1268,22 +1315,30 @@ class Player:
                     if player != self and not player.won:
                         self.playerCollide(player, 'x')
 
-        nearbyTiles = getNearbyTiles(self)
-
-        for button in currentMap.buttons:
-            if (button.rotation == 1 and self.xVel < 0) or (button.rotation == 3 and self.xVel > 0):
-                collide(self, button.rect_button, 'x')
-                collide(self, button.rect, 'x')
-            else:
-                collide(self, button.rect, 'x')
-                collide(self, button.rect_button, 'x')
-
-        for door in currentMap.doors:
-            if not door.unlocked:
-                collide(self, door.rect, 'x')
 
         wallCollide = False
-        for tile in nearbyTiles:
+
+        for object in getNearbyObjects(self.rect):
+
+            if isinstance(object, Button):
+                if (object.rotation == 1 and self.xVel < 0) or (object.rotation == 3 and self.xVel > 0):
+                    collide(self, object.rect_button, 'x')
+                    collide(self, object.rect, 'x')
+                else:
+                    collide(self, object.rect, 'x')
+                    collide(self, object.rect_button, 'x')
+
+            if isinstance(object, Door):
+                if not object.unlocked:
+                    if not wallCollide:
+                        wallCollide = collide(self, object.rect, 'x')
+                    else:
+                        collide(self, object.rect, 'x')
+
+            if isinstance(object, Spike):
+                object.collide(self)
+
+        for tile in getNearbyTiles(self):
             if not wallCollide:
                 wallCollide = collide(self, tile.rect, 'x')
             else:
@@ -1291,19 +1346,18 @@ class Player:
 
         if wallCollide and not self.onGround:
             if self.currentAbility == [None, None]:
-                if pressedKeys[3]:
+                if keyPress(self.controls[3]):
                     self.facing = 1
-                elif pressedKeys[1]:
+                elif keyPress(self.controls[1]):
                     self.facing = -1
-            if self.yVel >= 10 and self.currentAbility == [None, None]:         
+            if self.currentAbility == [None, None] and self.yVel >= 3:         
                 self.currentAbility = ["wj", 0]
-                self.jumps[1] = 0
-        elif not(self.currentAbility[0] == "wj" and self.currentAbility[1] > 1):
+        elif not(self.currentAbility[0] == "wj" and self.currentAbility[1] > 1) and self.currentAbility[0] != "gp":
             self.currentAbility = [None, None]
 
         self.yVel += self.grav/2
 
-        if self.canMove and self.singleKeyPress(0) and self.invuln != -1:
+        if self.canMove and keyPress_single(self.controls[0]) and self.invuln != -1:
             if self.jumps[1] > 0:
                 if not self.currentAbility[0] == "wj":
                     if self.coyoteTime > 0 or self.jumps[0]-1 == self.jumps[1]:
@@ -1322,22 +1376,22 @@ class Player:
 
         self.onGround = False
 
-        nearbyTiles = getNearbyTiles(self)
-        for button in currentMap.buttons:
-            if button.rotation != 0:
-                collide(self, button.rect, 'y')
-                collide(self, button.rect_button, 'y')
-            else:
-                collide(self, button.rect_button, 'y')
-                collide(self, button.rect, 'y')
-            #button.update(self)
-        for door in currentMap.doors:
-            if not door.unlocked:
-                collide(self, door.rect, 'y')
-        for obj in currentMap.objects:
-            if isinstance(obj, Bridge):
-                obj.collide(self)
-        for tile in nearbyTiles:
+        for object in getNearbyObjects(self.rect):
+
+            if isinstance(object, Button):
+                if object.rotation != 0:
+                    collide(self, object.rect, 'y')
+                    collide(self, object.rect_button, 'y')
+                else:
+                    collide(self, object.rect_button, 'y')
+                    collide(self, object.rect, 'y')
+            if isinstance(object, Door):
+                if not object.unlocked:
+                    collide(self, object.rect, 'y')
+        
+            if isinstance(object, Bridge) or isinstance(object, Spike):
+                object.collide(self)
+        for tile in getNearbyTiles(self):
             collide(self, tile.rect, 'y')
 
         if self.invuln > 0:
@@ -1463,7 +1517,7 @@ class Player:
                 perfectBonus_rect.center = (CAM_WIDTH/2, CAM_HEIGHT/14*12-30)
                 self.camera.blit(perfectBonus, perfectBonus_rect)
 
-                if checkKeypress([pygame.K_RETURN])[0] and any(self.scoreBonuses) and self.winTimer > delay3:
+                if keyPress(pygame.K_RETURN) and any(self.scoreBonuses) and self.winTimer > delay3:
                     for bonuses in range(len(self.scoreBonuses)):
                         self.score += self.scoreBonuses[bonuses]
                         self.scoreBonuses[bonuses] = 0
@@ -1516,7 +1570,7 @@ class Player:
             if player.invuln == -1:
                 sprite = (0, 120, 30, 40)
 
-            if player.deathType != '':
+            if player.deathType != '' and player.deathType != 'reset':
                 sprite = (90, 40, 30, 40)
 
             if player.won:
@@ -1537,7 +1591,10 @@ class Player:
 
     def update(self):
         global playerList
-        self.move()
+        if GAMESTATE == states.PLAYING and self.deathType != 'reset':
+            self.move()
+            if keyPress_single(pygame.K_r):
+                self.die('reset')
         if self.deathType == '':
             self.cameraMove()
         if self.deathType != '' and not self.won:
@@ -1546,27 +1603,182 @@ class Player:
             self.deathType = 'fell'
         if self.deathType != '' or self.won:
             self.canMove = False
-        self.camera.fill((255, 255, 255))
-        currentMap.update(self)
 
-        if self.crouching:
+        self.camera.fill((9, 9, 9))
+        currentMap.drawObjects(self)
+
+        if self.crouching and GAMESTATE == states.PLAYING:
             self.prevPos = pygame.FRect(self.prevPos[0], self.prevPos[1]-self.size/4, self.prevPos[2], self.prevPos[3]+self.size/4)
             self.rect = pygame.FRect(self.rect[0], self.rect[1]-self.size/4, self.rect[2], self.rect[3]+self.size/4)
 
-        for button in currentMap.buttons:
-            button.update(self)
         if SHOWHITBOXES:
             self.debug_drawRect()
         self.drawPlayer()
 
-        self.prevPos = self.rect
-        
-
-        if not self.won and self.deathType == '':
+        if not self.won and self.deathType == '' and GAMESTATE == states.PLAYING:
             self.timer += 1
 
         self.fade()
         self.drawUI()
+
+class Menu:
+    def __init__(self):
+        self.bg = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        self.bg.fill((0,0,0,100))
+        self.prevType = None
+        self.type = None
+        self.prevMenu = None
+        self.cursor = 0
+        self.menuDelay = 0
+        self.nextOption = None
+
+    def changeMenu(self, option, delay=False, subMenu=False):
+        if subMenu:
+            self.prevMenu = self.type
+            
+        if delay:
+            self.menuDelay = SECOND
+            self.nextOption = option
+        else:
+            self.type = option
+
+    def goBack(self):
+        self.type = self.prevMenu
+
+    def draw(self):
+        global run, GAMESTATE
+        if self.type != None:
+            screen.blit(self.bg)
+        textList, options = [], []
+
+        if self.type == menus.PAUSE:
+            text, rect = drawText('Paused', font2_xl, italic=True)
+            rect.midtop = (WIDTH/2, 20)
+            textList.append([text, rect])
+
+            text, rect = drawText('Resume', font2_l)
+            rect.midtop = (WIDTH/2, 120)
+            options.append([text, rect])
+
+            text, rect = drawText('Retry', font2_l)
+            rect.midtop = (WIDTH/2, 190)
+            options.append([text, rect])
+
+            text, rect = drawText('Options', font2_l)
+            rect.midtop = (WIDTH/2, 260)
+            options.append([text, rect])
+
+            text, rect = drawText('Quit', font2_l, color=(255,0,0))
+            rect.midtop = (WIDTH/2, 400)
+            options.append([text, rect])
+
+        elif self.type == menus.OPTION:
+            pass
+
+        elif self.type == menus.RETRY:
+            text, rect = drawText('Paused', font2_xl, italic=True)
+            rect.midtop = (WIDTH/2, 20)
+            textList.append([text, rect])
+
+            text, rect = drawText('Retry from', font2_l)
+            rect.midtop = (WIDTH/2, 120)
+            options.append([text, rect])
+
+            text, rect = drawText('last checkpoint', font2_l)
+            rect.midtop = (WIDTH/2, 160)
+            textList.append([text, rect])
+
+            text, rect = drawText('Restart whole', font2_l)
+            rect.midtop = (WIDTH/2, 240)
+            options.append([text, rect])
+
+            text, rect = drawText('level', font2_l)
+            rect.midtop = (WIDTH/2, 280)
+            textList.append([text, rect])
+
+            text, rect = drawText('Nevermind', font2_l, color=(255,0,0))
+            rect.midtop = (WIDTH/2, 400)
+            options.append([text, rect])
+
+        maxOptions = len(options)
+
+        if self.prevType != self.type:
+            self.cursor = 0
+            self.prevType = self.type
+
+
+        if self.menuDelay == 0:
+            if keyPress_single(pygame.K_UP):
+                self.cursor -= 1
+            elif keyPress_single(pygame.K_DOWN):
+                self.cursor += 1
+
+        if self.cursor < 0:
+            self.cursor = maxOptions-1
+        if self.cursor > maxOptions-1:
+            self.cursor = 0
+
+        if (keyPress_single(pygame.K_RETURN) or keyPress_single(pygame.K_z)) and self.menuDelay == 0:
+            match self.cursor:
+                case 0:
+
+                    if self.type == menus.PAUSE:
+                        GAMESTATE = states.PLAYING
+                        self.changeMenu(None)
+                        self.prevMenu = None
+
+                    elif self.type == menus.RETRY:
+                        for player in playerList:
+                            player.die('reset')
+                        self.changeMenu(None)
+                        GAMESTATE = states.PLAYING
+                case 1:
+
+                    if self.type == menus.PAUSE:
+                        self.changeMenu(menus.RETRY)
+
+                    elif self.type == menus.RETRY:
+                        for player in playerList:
+                            player.lastCheckpoint = currentMap.spawnPos
+                            player.timer = 0
+                            player.coins = 0
+                            player.die('reset')
+                        self.changeMenu(None)
+                        GAMESTATE = states.PLAYING
+
+                case 2:
+
+                    if self.type == menus.PAUSE:
+                        self.changeMenu(menus.OPTION)
+
+                    elif self.type == menus.RETRY:
+                        self.goBack()
+
+                case 3:
+
+                    if self.type == menus.PAUSE:
+                        run = False
+
+
+        if keyPress_single(pygame.K_ESCAPE) or keyPress_single(pygame.K_x):
+            self.goBack()
+
+        if self.type != None and len(options) > 0 and not(int(self.menuDelay/6)%2):
+            cursor_rect = pygame.Rect(0,0,50,40)
+            cursor_rect.centery = options[self.cursor][1].centery
+            cursor_rect.right = options[self.cursor][1].left - 10 - math.sin(pygame.time.get_ticks()/200)*4
+            screen.blit(img_cursor, cursor_rect)
+
+        for text in textList + options:
+            screen.blit(text[0], text[1])
+
+        if self.menuDelay > 0:
+            self.menuDelay -= 1
+        if self.menuDelay == 0 and self.nextOption != None:
+            self.type = self.nextOption
+            self.nextOption = None
+
+menu = Menu()
 
 def setPos(rect, x, y):
     return pygame.FRect(x, y, rect[2], rect[3])
@@ -1589,12 +1801,30 @@ def getNearbyTiles(object):
 
     return nearbyTiles
 
+def getNearbyObjects(object):
+    global currentMap
+    nearbyObjects = []
+    objects = currentMap.objects + currentMap.doors + currentMap.buttons + currentMap.coins + currentMap.enemies
+    if isinstance(object, Player):
+        xMin, xMax, yMin, yMax = -object.cameraPos[0], CAM_WIDTH-object.cameraPos[0], -object.cameraPos[1], CAM_HEIGHT-object.cameraPos[1]
+    if isinstance(object, pygame.Rect) or isinstance(object, pygame.FRect):
+        xMin, xMax, yMin, yMax =  math.floor(object.left-TILESIZE), math.ceil(object.right+TILESIZE), math.floor(object.top-TILESIZE), math.ceil(object.bottom+TILESIZE)
+
+    for obj in objects:
+        if xMin <= obj.rect.right and xMax >= obj.rect.left and yMin <= obj.rect.bottom and yMax >= obj.rect.top:
+            nearbyObjects.append(obj)
+
+    return nearbyObjects
+
 def getPlayerRect(player, offsets):
     global currentMap
     return (round(player.rect[0]-offsets[0]+(CAM_WIDTH/2-20), 2), round(player.rect[1]-offsets[1]+(CAM_HEIGHT/2-20), 2), player.rect[2], player.rect[3])
 
-def drawText(textStr, font=font):
-    text = font.render(textStr, False, (255, 255, 255))
+def drawText(textStr, font=font, color=(255,255,255), bold=False, italic=False):
+    tempFont = font
+    tempFont.bold = bold
+    tempFont.italic = italic
+    text = tempFont.render(textStr, False, color)
     text_rect = text.get_rect()
     return text, text_rect
 
@@ -1621,26 +1851,59 @@ def checkKeypress(keyList):
         requestedKeys.append(keys[key])
     return requestedKeys
 
-def singlePress(key, bool):
-    press = False
-    if key:
-        if not bool:
-            bool = True
-            press = True
-    else:
-        bool = False
-    return press, key, bool
+def keyPress(key):
+    keys = pygame.key.get_pressed()
+    return keys[key]
+
+def keyPress_single(key):
+    global prevKeys
+    keys = pygame.key.get_pressed()
+    press = keys[key] and not prevKeys[key]
+    return press
 
 def update():
-    global playerList, currentMap
+    global playerList, currentMap, prevKeys, GAMESTATE, screen, fadeLayer
     clock.tick(FPS)
 
-    screen.fill((255, 255, 255))
+    screen.fill((0, 0, 0))
 
-    for player in playerList:
-        player.update()
-    
-    drawCamera()
+    if GAMESTATE == states.PLAYING or GAMESTATE == states.PAUSED:
+
+        for player in playerList:
+            player.update()
+
+        if GAMESTATE == states.PLAYING:
+            currentMap.update()
+
+        canPause = True
+
+        for player in playerList:
+            player.prevPos = player.rect
+            if (player.won or player.deathType or player.fadeTime < 1):
+                canPause = False
+
+        if len(playerList) > 1:
+            canPause = True
+
+        if keyPress_single(pygame.K_ESCAPE) and canPause and (menu.type == None or menu.type == menus.PAUSE):
+            if GAMESTATE == states.PLAYING:
+                GAMESTATE = states.PAUSED
+                menu.prevMenu = menus.PAUSE
+            elif GAMESTATE == states.PAUSED:
+                GAMESTATE = states.PLAYING
+                menu.prevMenu = None
+
+        if not canPause and menu.type != None:
+            menu.prevMenu = None
+
+        drawCamera()
+
+    menu.draw()
+
+    fade()
+    screen.blit(fadeLayer)
+
+    prevKeys = pygame.key.get_pressed()
 
     screen2 = pygame.transform.scale(screen, display.get_size())
 
